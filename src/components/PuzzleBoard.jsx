@@ -26,29 +26,26 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     const img = new Image();
     img.onload = () => {
       setImage(img);
-      const canvas = canvasRef.current;
       const maxWidth = window.innerWidth * 0.95;
       const maxHeight = window.innerHeight - 220; 
       const scale = Math.min(maxWidth / img.width, maxHeight / img.height);
       
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-      setBoardSize({ w: canvas.width, h: canvas.height });
+      const puzzleW = img.width * scale;
+      const puzzleH = img.height * scale;
+      setBoardSize({ w: puzzleW, h: puzzleH });
 
-      const { pieces: newPieces } = generatePuzzleGrid(canvas.width, canvas.height, cols, rows);
-      const useQuadrants = (cols * rows) >= 80; // Kick in quadrants a bit earlier for easier scaling
+      const { pieces: newPieces } = generatePuzzleGrid(puzzleW, puzzleH, cols, rows);
+      const useQuadrants = (cols * rows) >= 80; 
       
-      // Strict Grid Indexing (Fixes tab overlap bleeding)
       const midCol = Math.ceil(cols / 2);
       const midRow = Math.ceil(rows / 2);
-      const pieceW = canvas.width / cols;
-      const pieceH = canvas.height / rows;
 
-      const mappedPieces = newPieces.map(p => {
+      const mappedPieces = newPieces.map((p, index) => {
         let quad = 0;
         if (useQuadrants) {
-          const pCol = Math.round(p.targetX / pieceW);
-          const pRow = Math.round(p.targetY / pieceH);
+          // Strict Grid Indexing (Fixes tab overlap bleeding)
+          const pCol = index % cols;
+          const pRow = Math.floor(index / cols);
           
           if (pCol < midCol && pRow < midRow) quad = 1;
           else if (pCol >= midCol && pRow < midRow) quad = 2;
@@ -57,6 +54,12 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
         }
         return { ...p, inTray: true, quadrant: quad };
       });
+      
+      // Fisher-Yates Shuffle to randomize tray pieces
+      for (let i = mappedPieces.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [mappedPieces[i], mappedPieces[j]] = [mappedPieces[j], mappedPieces[i]];
+      }
       
       setPieces(mappedPieces);
       setActiveQuadrant(useQuadrants ? 1 : 0);
@@ -68,11 +71,9 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
   useEffect(() => {
     if (!boardSize.w) return;
     
-    // Exact screen space available for the puzzle
-    const availableW = window.innerWidth - 40; // 20px padding on left/right
-    const availableH = window.innerHeight - 120 - 70 - 40; // Minus tray, toolbar, and 20px padding top/bottom
+    const availableW = window.innerWidth - 40; 
+    const availableH = window.innerHeight - 120 - 70 - 40; 
     
-    // Center point of the visible puzzle area
     const cx = window.innerWidth / 2;
     const cy = 70 + (window.innerHeight - 120 - 70) / 2; 
 
@@ -110,7 +111,6 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       }
     }
 
-    // Scale to fill exactly 100% of the available space
     const scale = Math.min(availableW / quadW, availableH / quadH);
     setCamera({ scale, x: cx - (tx * scale), y: cy - (ty * scale) });
   }, [activeQuadrant, boardSize, cols, rows]);
@@ -134,7 +134,11 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     
-    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    // THIS FIXES THE WALL CLIPPING: Canvas must fill the entire screen DOM
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     
     ctx.translate(camera.x, camera.y);
@@ -142,11 +146,11 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
 
     ctx.strokeStyle = 'rgba(255,255,255,0.15)';
     ctx.lineWidth = 3 / camera.scale;
-    ctx.strokeRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeRect(0, 0, boardSize.w, boardSize.h);
 
     if (showGhost) {
       ctx.globalAlpha = 0.2;
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0, boardSize.w, boardSize.h);
       ctx.globalAlpha = 1.0;
     }
 
@@ -173,10 +177,10 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       const maxTab = Math.min(piece.width, piece.height) * 0.5;
       ctx.drawImage(
         image,
-        ((piece.targetX - maxTab) / canvas.width) * image.width,
-        ((piece.targetY - maxTab) / canvas.height) * image.height,
-        ((piece.width + maxTab * 2) / canvas.width) * image.width,
-        ((piece.height + maxTab * 2) / canvas.height) * image.height,
+        ((piece.targetX - maxTab) / boardSize.w) * image.width,
+        ((piece.targetY - maxTab) / boardSize.h) * image.height,
+        ((piece.width + maxTab * 2) / boardSize.w) * image.width,
+        ((piece.height + maxTab * 2) / boardSize.h) * image.height,
         -maxTab, -maxTab, piece.width + maxTab * 2, piece.height + maxTab * 2
       );
       
@@ -187,7 +191,7 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       ctx.restore();
     });
     ctx.restore();
-  }, [pieces, image, activePieceId, showGhost, camera]);
+  }, [pieces, image, activePieceId, showGhost, camera, boardSize]);
 
   const handlePointerDownBoard = (e) => {
     const worldX = (e.clientX - camera.x) / camera.scale;
@@ -238,21 +242,14 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     let newX = worldX - offset.x;
     let newY = worldY - offset.y;
     
-    // Strict Intersection Cage: Locks piece inside the Board AND inside the Viewport
-    const buffer = Math.min(p.width, p.height) * 0.25;
-    
+    // Viewport Cage: Only block piece from leaving the physical screen so it doesn't get lost
     const viewMinX = -camera.x / camera.scale;
     const viewMaxX = (window.innerWidth - camera.x) / camera.scale - p.width;
     const viewMinY = (70 - camera.y) / camera.scale; 
     const viewMaxY = (window.innerHeight - 120 - camera.y) / camera.scale - p.height; 
 
-    const limitMinX = Math.max(-buffer, viewMinX);
-    const limitMaxX = Math.min(boardSize.w - p.width + buffer, viewMaxX);
-    const limitMinY = Math.max(-buffer, viewMinY);
-    const limitMaxY = Math.min(boardSize.h - p.height + buffer, viewMaxY);
-
-    newX = Math.max(limitMinX, Math.min(limitMaxX, newX));
-    newY = Math.max(limitMinY, Math.min(limitMaxY, newY));
+    newX = Math.max(viewMinX, Math.min(viewMaxX, newX));
+    newY = Math.max(viewMinY, Math.min(viewMaxY, newY));
 
     setPieces(prev => prev.map(piece => 
       piece.id === activePieceId ? { ...piece, currentX: newX, currentY: newY } : piece
@@ -267,8 +264,8 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       if (p.id === activePieceId) {
         if (isOverTray) return { ...p, inTray: true, isPlaced: false };
 
-        // Tightened Snap Tolerance (Prevents premature grabbing)
-        const snapTolerance = Math.max(15, Math.min(p.width, p.height) * 0.15); 
+        // Tightened Snap Tolerance (Dropped to 10%)
+        const snapTolerance = Math.max(10, Math.min(p.width, p.height) * 0.10); 
         if (Math.abs(p.currentX - p.targetX) < snapTolerance && Math.abs(p.currentY - p.targetY) < snapTolerance) {
           return { ...p, currentX: p.targetX, currentY: p.targetY, isPlaced: true };
         }
@@ -278,7 +275,6 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     setActivePieceId(null);
   };
 
-  // Only show pieces belonging to the active quadrant
   const trayPieces = pieces.filter(p => 
     p.inTray && 
     (activeQuadrant === 0 || p.quadrant === activeQuadrant) &&
@@ -333,8 +329,6 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       <div className="flex-1 w-full h-full relative">
         <canvas 
           ref={canvasRef}
-          width={window.innerWidth}
-          height={window.innerHeight}
           className="touch-none absolute top-0 left-0 transition-transform duration-1000 ease-in-out"
           onPointerDown={handlePointerDownBoard}
         />
