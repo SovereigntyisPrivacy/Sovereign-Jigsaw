@@ -43,7 +43,7 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       const mappedPieces = newPieces.map((p, index) => {
         let quad = 0;
         if (useQuadrants) {
-          // Strict Grid Indexing (Fixes tab overlap bleeding)
+          // Strict Grid Indexing (Guarantees no overlap bleeding)
           const pCol = index % cols;
           const pRow = Math.floor(index / cols);
           
@@ -55,7 +55,7 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
         return { ...p, inTray: true, quadrant: quad };
       });
       
-      // Fisher-Yates Shuffle to randomize tray pieces
+      // Fisher-Yates Shuffle to completely randomize the tray pieces
       for (let i = mappedPieces.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [mappedPieces[i], mappedPieces[j]] = [mappedPieces[j], mappedPieces[i]];
@@ -134,7 +134,6 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     
-    // THIS FIXES THE WALL CLIPPING: Canvas must fill the entire screen DOM
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
     
@@ -202,8 +201,11 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       const p = boardPieces[i];
       if (p.isPlaced) continue;
       
-      if (worldX >= p.currentX - (p.width*0.25) && worldX <= p.currentX + p.width + (p.width*0.25) && 
-          worldY >= p.currentY - (p.height*0.25) && worldY <= p.currentY + p.height + (p.height*0.25)) {
+      const maxTab = Math.min(p.width, p.height) * 0.5;
+      
+      // Highly forgiving grab area for arthritis accessibility 
+      if (worldX >= p.currentX - maxTab && worldX <= p.currentX + p.width + maxTab && 
+          worldY >= p.currentY - maxTab && worldY <= p.currentY + p.height + maxTab) {
         setActivePieceId(p.id);
         setOffset({ x: worldX - p.currentX, y: worldY - p.currentY });
         e.target.setPointerCapture(e.pointerId);
@@ -218,6 +220,15 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
 
     let spawnX = worldX - (p.width / 2);
     let spawnY = worldY - (p.height / 2);
+    
+    const maxTab = Math.min(p.width, p.height) * 0.5;
+    const viewMinX = (-camera.x) / camera.scale + maxTab;
+    const viewMaxX = (window.innerWidth - camera.x) / camera.scale - p.width - maxTab;
+    const viewMinY = (70 - camera.y) / camera.scale + maxTab; 
+    const viewMaxY = (window.innerHeight - 120 - camera.y) / camera.scale - p.height - maxTab; 
+
+    if (viewMaxX > viewMinX) spawnX = Math.max(viewMinX, Math.min(viewMaxX, spawnX));
+    if (viewMaxY > viewMinY) spawnY = Math.max(viewMinY, Math.min(viewMaxY, spawnY));
 
     setPieces(prev => prev.map(piece => 
       piece.id === p.id ? { 
@@ -242,14 +253,17 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     let newX = worldX - offset.x;
     let newY = worldY - offset.y;
     
-    // Viewport Cage: Only block piece from leaving the physical screen so it doesn't get lost
-    const viewMinX = -camera.x / camera.scale;
-    const viewMaxX = (window.innerWidth - camera.x) / camera.scale - p.width;
-    const viewMinY = (70 - camera.y) / camera.scale; 
-    const viewMaxY = (window.innerHeight - 120 - camera.y) / camera.scale - p.height; 
+    // ANTI-TRAPPING CAGE: Accounts for piece tabs to completely prevent hiding under UI
+    const maxTab = Math.min(p.width, p.height) * 0.5;
+    const viewMinX = (-camera.x) / camera.scale + maxTab;
+    const viewMaxX = (window.innerWidth - camera.x) / camera.scale - p.width - maxTab;
+    
+    // Blocks the 70px Toolbar and the 120px Tray
+    const viewMinY = (70 - camera.y) / camera.scale + maxTab; 
+    const viewMaxY = (window.innerHeight - 120 - camera.y) / camera.scale - p.height - maxTab; 
 
-    newX = Math.max(viewMinX, Math.min(viewMaxX, newX));
-    newY = Math.max(viewMinY, Math.min(viewMaxY, newY));
+    if (viewMaxX > viewMinX) newX = Math.max(viewMinX, Math.min(viewMaxX, newX));
+    if (viewMaxY > viewMinY) newY = Math.max(viewMinY, Math.min(viewMaxY, newY));
 
     setPieces(prev => prev.map(piece => 
       piece.id === activePieceId ? { ...piece, currentX: newX, currentY: newY } : piece
@@ -264,8 +278,7 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       if (p.id === activePieceId) {
         if (isOverTray) return { ...p, inTray: true, isPlaced: false };
 
-        // Tightened Snap Tolerance (Dropped to 10%)
-        const snapTolerance = Math.max(10, Math.min(p.width, p.height) * 0.10); 
+        const snapTolerance = Math.max(10, Math.min(p.width, p.height) * 0.15); 
         if (Math.abs(p.currentX - p.targetX) < snapTolerance && Math.abs(p.currentY - p.targetY) < snapTolerance) {
           return { ...p, currentX: p.targetX, currentY: p.targetY, isPlaced: true };
         }
