@@ -1,23 +1,22 @@
 import { useState, useRef, useEffect } from 'react'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
-import { ImagePlus, Library } from 'lucide-react'
+import { ImagePlus, Library, Play, Trash2, CheckCircle2 } from 'lucide-react'
 import PuzzleBoard from './components/PuzzleBoard'
 
 function App() {
-  const [imageSrc, setImageSrc] = useState(null)
-  const [setupPhase, setSetupPhase] = useState(false)
+  const [currentView, setCurrentView] = useState('home') // home, setup, game, library
+  const [library, setLibrary] = useState([])
+  const [activePuzzle, setActivePuzzle] = useState(null)
+  
   const [pieceCount, setPieceCount] = useState(100)
-  const [gridConfig, setGridConfig] = useState({ cols: 4, rows: 4 })
-  const [hasSave, setHasSave] = useState(false)
-  const [isResuming, setIsResuming] = useState(false)
   const imgRef = useRef(null)
 
-  // Check for saved game when the app loads or returns to menu
+  // Load Library on boot
   useEffect(() => {
-    const saved = localStorage.getItem('sovereign_jigsaw_save')
-    if (saved) setHasSave(true)
-    else setHasSave(false)
-  }, [imageSrc]) 
+    const saved = JSON.parse(localStorage.getItem('sovereign_jigsaw_library')) || []
+    // Sort by most recently played
+    setLibrary(saved.sort((a, b) => b.lastPlayed - a.lastPlayed))
+  }, [currentView])
 
   const openGallery = async () => {
     try {
@@ -32,13 +31,12 @@ function App() {
       img.crossOrigin = "Anonymous"; 
       img.onload = () => {
         imgRef.current = img;
-        setImageSrc(image.webPath);
-        setSetupPhase(true);
-        setIsResuming(false);
+        setActivePuzzle({ id: Date.now(), imageSrc: image.webPath });
+        setCurrentView('setup');
       };
       img.src = image.webPath;
     } catch (error) {
-      console.log("Gallery picker cancelled or failed", error);
+      console.log("Gallery picker cancelled");
     }
   };
 
@@ -46,54 +44,99 @@ function App() {
     const aspect = imgRef.current.width / imgRef.current.height
     const cols = Math.max(2, Math.round(Math.sqrt(pieceCount * aspect)))
     const rows = Math.max(2, Math.round(Math.sqrt(pieceCount / aspect)))
-    setGridConfig({ cols, rows })
-    setSetupPhase(false)
+    
+    setActivePuzzle(prev => ({ ...prev, cols, rows }))
+    setCurrentView('game')
   }
 
-  const resumeGame = () => {
-    const saved = JSON.parse(localStorage.getItem('sovereign_jigsaw_save'))
-    if (saved) {
-      setImageSrc(saved.imageSrc)
-      setGridConfig({ cols: saved.cols, rows: saved.rows })
-      setIsResuming(true)
-      setSetupPhase(false)
-    }
+  const resumePuzzle = (puzzleData) => {
+    setActivePuzzle(puzzleData)
+    setCurrentView('game')
   }
 
-  const handleExit = () => {
-    setImageSrc(null)
-    setSetupPhase(false)
-    setIsResuming(false)
+  const deletePuzzle = (id) => {
+    const updated = library.filter(p => p.id !== id);
+    localStorage.setItem('sovereign_jigsaw_library', JSON.stringify(updated));
+    setLibrary(updated);
   }
 
   return (
     <div className="min-h-screen bg-[#171717] text-white flex flex-col items-center p-6">
-      {!imageSrc ? (
+      
+      {currentView === 'home' && (
         <div className="w-full max-w-md flex flex-col items-center mt-10">
           <h1 className="text-4xl font-black mb-12 text-emerald-500 tracking-wide drop-shadow-md">Sovereign Jigsaw</h1>
           
           <div className="grid grid-cols-2 gap-4 w-full">
-            <button 
-              onClick={openGallery} 
-              className="bg-emerald-700 hover:bg-emerald-600 p-8 rounded-3xl shadow-xl flex flex-col items-center justify-center gap-4 transition-transform active:scale-95 border border-emerald-500/30"
-            >
-              <ImagePlus size={48} className="text-emerald-100 drop-shadow" />
+            <button onClick={openGallery} className="bg-emerald-700 hover:bg-emerald-600 p-8 rounded-3xl shadow-xl flex flex-col items-center justify-center gap-4 active:scale-95 border border-emerald-500/30">
+              <ImagePlus size={48} className="text-emerald-100" />
               <span className="text-lg font-bold text-emerald-50">New Puzzle</span>
             </button>
             
-            <button 
-              onClick={hasSave ? resumeGame : undefined}
-              className={`${hasSave ? 'bg-neutral-700 hover:bg-neutral-600 border-neutral-500 cursor-pointer active:scale-95' : 'bg-neutral-800 opacity-50 border-neutral-700 cursor-not-allowed'} p-8 rounded-3xl shadow-xl flex flex-col items-center justify-center gap-4 transition-all border`}
-            >
-              <Library size={48} className={hasSave ? "text-emerald-400" : "text-neutral-500"} />
-              <span className={`text-lg font-bold ${hasSave ? "text-white" : "text-neutral-400"}`}>My Puzzles</span>
+            <button onClick={() => setCurrentView('library')} className="bg-neutral-800 hover:bg-neutral-700 p-8 rounded-3xl shadow-xl flex flex-col items-center justify-center gap-4 active:scale-95 border border-neutral-600">
+              <Library size={48} className="text-emerald-400" />
+              <span className="text-lg font-bold text-white">My Puzzles</span>
+              {library.length > 0 && (
+                <div className="absolute top-4 right-4 bg-emerald-500 text-xs font-bold px-2 py-1 rounded-full">{library.length}</div>
+              )}
             </button>
           </div>
         </div>
-      ) : setupPhase ? (
+      )}
+
+      {currentView === 'library' && (
+        <div className="w-full max-w-md flex flex-col h-full mt-4">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-3xl font-black text-emerald-400">My Puzzles</h2>
+            <button onClick={() => setCurrentView('home')} className="bg-neutral-800 p-3 rounded-full hover:bg-neutral-700">
+              <ArrowLeft size={24} />
+            </button>
+          </div>
+
+          {library.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-neutral-500 font-bold text-lg">No saved puzzles yet!</div>
+          ) : (
+            <div className="flex flex-col gap-4 overflow-y-auto pb-10">
+              {library.map(puzzle => {
+                const totalPieces = puzzle.cols * puzzle.rows;
+                const placedPieces = puzzle.pieces.filter(p => p.isPlaced).length;
+                const percent = Math.round((placedPieces / totalPieces) * 100);
+                
+                return (
+                  <div key={puzzle.id} className="bg-neutral-800 border border-neutral-700 rounded-2xl p-4 flex gap-4 items-center shadow-lg">
+                    <img src={puzzle.imageSrc} className="w-24 h-24 rounded-xl object-cover bg-black" />
+                    
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-bold text-lg">{totalPieces} Pieces</span>
+                        {puzzle.status === 'completed' ? (
+                          <CheckCircle2 size={24} className="text-emerald-500" />
+                        ) : (
+                          <span className="text-sm font-bold text-emerald-400">{percent}%</span>
+                        )}
+                      </div>
+                      
+                      <div className="flex gap-2 mt-4">
+                        <button onClick={() => resumePuzzle(puzzle)} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg font-bold flex items-center justify-center gap-2">
+                          <Play size={18} /> {puzzle.status === 'completed' ? 'View' : 'Resume'}
+                        </button>
+                        <button onClick={() => deletePuzzle(puzzle.id)} className="bg-red-900/50 hover:bg-red-800 text-red-400 p-2 rounded-lg">
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {currentView === 'setup' && (
         <div className="flex flex-col items-center justify-center w-full max-w-md h-full mt-20 bg-neutral-800 p-8 rounded-3xl shadow-2xl border border-neutral-700">
           <div className="w-full h-48 mb-8 rounded-2xl overflow-hidden border-2 border-neutral-700 shadow-inner bg-black flex items-center justify-center">
-             <img src={imageSrc} alt="Preview" className="max-w-full max-h-full object-contain" />
+             <img src={activePuzzle?.imageSrc} className="max-w-full max-h-full object-contain" />
           </div>
 
           <h2 className="text-2xl font-bold mb-6 text-white">Choose Difficulty</h2>
@@ -104,29 +147,22 @@ function App() {
               <span className="text-sm">1000</span>
             </div>
             <input 
-              type="range" 
-              min="50" 
-              max="1000" 
-              step="10" 
+              type="range" min="50" max="1000" step="10" 
               value={pieceCount} 
               onChange={(e) => setPieceCount(Number(e.target.value))}
               className="w-full h-4 bg-neutral-900 rounded-lg appearance-none cursor-pointer accent-emerald-500"
             />
           </div>
           <div className="flex gap-4 w-full">
-            <button onClick={handleExit} className="flex-1 py-4 rounded-xl bg-neutral-700 hover:bg-neutral-600 font-bold text-lg transition-colors">Cancel</button>
-            <button onClick={startGame} className="flex-1 py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold text-lg shadow-lg transition-colors">Start Game</button>
+            <button onClick={() => setCurrentView('home')} className="flex-1 py-4 rounded-xl bg-neutral-700 hover:bg-neutral-600 font-bold text-lg">Cancel</button>
+            <button onClick={startGame} className="flex-1 py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold text-lg shadow-lg">Start Game</button>
           </div>
         </div>
-      ) : (
+      )}
+
+      {currentView === 'game' && (
         <div className="flex flex-col items-center w-full h-full absolute inset-0">
-          <PuzzleBoard 
-            imageSrc={imageSrc} 
-            cols={gridConfig.cols} 
-            rows={gridConfig.rows} 
-            onExit={handleExit} 
-            isResuming={isResuming}
-          />
+          <PuzzleBoard puzzleData={activePuzzle} onExit={() => setCurrentView('home')} />
         </div>
       )}
     </div>

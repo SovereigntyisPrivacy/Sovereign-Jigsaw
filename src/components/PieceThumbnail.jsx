@@ -1,22 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { buildPiecePath } from '../utils/jigsawMath';
 
-export default function PieceThumbnail({ piece, image, boardWidth, boardHeight }) {
+export default function PieceThumbnail({ piece, image, boardWidth, boardHeight, imageFilter = 'none' }) {
   const [dataUrl, setDataUrl] = useState('');
 
   useEffect(() => {
     if (!image || !boardWidth || !boardHeight) return;
     
-    // Create an invisible transient canvas to save memory
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    // Calculate bounding box including the tabs that stick out
     const maxTab = Math.min(piece.width, piece.height) * 0.5;
     const bboxWidth = piece.width + (maxTab * 2);
     const bboxHeight = piece.height + (maxTab * 2);
 
-    // Scale it down to fit nicely in the 80px high bottom tray
     const maxSize = 72; 
     const scale = Math.min(maxSize / bboxWidth, maxSize / bboxHeight);
 
@@ -24,9 +21,8 @@ export default function PieceThumbnail({ piece, image, boardWidth, boardHeight }
     canvas.height = bboxHeight * scale;
 
     ctx.scale(scale, scale);
-    ctx.translate(maxTab, maxTab); // Shift origin so left/top tabs aren't cut off
+    ctx.translate(maxTab, maxTab);
 
-    // Draw and cut the piece
     buildPiecePath(ctx, piece.width, piece.height, piece.edges);
     
     ctx.lineWidth = 3 / scale;
@@ -35,7 +31,9 @@ export default function PieceThumbnail({ piece, image, boardWidth, boardHeight }
     
     ctx.clip();
     
-    // Draw the image, pulling slightly outside the target square to fill the tabs
+    // Apply the active color filter before drawing the image data
+    ctx.filter = imageFilter;
+    
     ctx.drawImage(
       image,
       ((piece.targetX - maxTab) / boardWidth) * image.width,
@@ -44,9 +42,12 @@ export default function PieceThumbnail({ piece, image, boardWidth, boardHeight }
       ((piece.height + maxTab * 2) / boardHeight) * image.height,
       -maxTab, -maxTab, piece.width + maxTab * 2, piece.height + maxTab * 2
     );
+    
+    // Reset filter
+    ctx.filter = 'none';
 
     setDataUrl(canvas.toDataURL('image/png'));
-  }, [piece, image, boardWidth, boardHeight]);
+  }, [piece, image, boardWidth, boardHeight, imageFilter]);
 
   if (!dataUrl) {
     return <div className="w-12 h-12 animate-pulse bg-white/10 rounded-lg" />;

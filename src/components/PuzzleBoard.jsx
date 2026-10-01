@@ -1,9 +1,16 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Settings, Eye, Grid, ArrowLeft } from 'lucide-react';
+import { Settings, Eye, Grid, ArrowLeft, Palette } from 'lucide-react';
 import { generatePuzzleGrid, buildPiecePath } from '../utils/jigsawMath';
 import PieceThumbnail from './PieceThumbnail';
 
-export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isResuming }) {
+const FILTERS = [
+  { name: 'Normal', value: 'none' },
+  { name: 'B&W', value: 'grayscale(100%) contrast(120%)' },
+  { name: 'Vintage', value: 'sepia(80%) contrast(110%)' },
+  { name: 'Vibrant', value: 'saturate(200%) contrast(110%)' }
+];
+
+export default function PuzzleBoard({ puzzleData, onExit }) {
   const canvasRef = useRef(null);
   const [pieces, setPieces] = useState([]);
   const [image, setImage] = useState(null);
@@ -14,14 +21,16 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [activeQuadrant, setActiveQuadrant] = useState(0); 
   
+  // UI & Filter States
+  const [filterIndex, setFilterIndex] = useState(0);
   const [bgColor, setBgColor] = useState('#8B5A2B');
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [filterEdges, setFilterEdges] = useState(false);
   const [showGhost, setShowGhost] = useState(false);
 
-  const bgOptions = ['#2D3748', '#4A5568', '#276749', '#E2E8F0', '#D6BC97', '#8B5A2B'];
+  const bgOptions = ['#2D3748', '#4A5568', '#276749', '#E2E8F0', '#D6BC97', '#8B5A2B', '#171717'];
 
-  // 1. Initialize Board & Handle Resume
+  // 1. Initialize Board
   useEffect(() => {
     const img = new Image();
     img.onload = () => {
@@ -34,30 +43,26 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
       const puzzleH = img.height * scale;
       setBoardSize({ w: puzzleW, h: puzzleH });
 
-      // LOAD SAVE STATE IF RESUMING
-      if (isResuming) {
-        const saved = JSON.parse(localStorage.getItem('sovereign_jigsaw_save'));
-        if (saved && saved.pieces) {
-          setPieces(saved.pieces);
-          setActiveQuadrant(saved.activeQuadrant);
-          return; // Skip grid generation
-        }
+      if (puzzleData.pieces) {
+        setPieces(puzzleData.pieces);
+        setActiveQuadrant(puzzleData.activeQuadrant || 0);
+        setFilterIndex(puzzleData.filterIndex || 0);
+        return;
       }
 
-      const { pieces: newPieces } = generatePuzzleGrid(puzzleW, puzzleH, cols, rows);
-      const useQuadrants = (cols * rows) >= 80; 
+      const { pieces: newPieces } = generatePuzzleGrid(puzzleW, puzzleH, puzzleData.cols, puzzleData.rows);
+      const useQuadrants = (puzzleData.cols * puzzleData.rows) >= 80; 
       
-      const midCol = Math.ceil(cols / 2);
-      const midRow = Math.ceil(rows / 2);
-      const pieceW = puzzleW / cols;
-      const pieceH = puzzleH / rows;
+      const midCol = Math.ceil(puzzleData.cols / 2);
+      const midRow = Math.ceil(puzzleData.rows / 2);
+      const pieceW = puzzleW / puzzleData.cols;
+      const pieceH = puzzleH / puzzleData.rows;
 
-      const mappedPieces = newPieces.map((p) => {
+      const mappedPieces = newPieces.map((p, index) => {
         let quad = 0;
         if (useQuadrants) {
           const pCol = Math.floor((p.targetX + 1) / pieceW);
           const pRow = Math.floor((p.targetY + 1) / pieceH);
-          
           if (pCol < midCol && pRow < midRow) quad = 1;
           else if (pCol >= midCol && pRow < midRow) quad = 2;
           else if (pCol < midCol && pRow >= midRow) quad = 3;
@@ -74,36 +79,44 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
       setPieces(mappedPieces);
       setActiveQuadrant(useQuadrants ? 1 : 0);
     };
-    img.src = imageSrc;
-  }, [imageSrc, cols, rows, isResuming]);
+    img.src = puzzleData.imageSrc;
+  }, [puzzleData]);
 
-  // 2. AUTO-SAVE ENGINE (Fires on every move)
+  // 2. Library Auto-Save Engine
   useEffect(() => {
     if (pieces.length === 0) return;
     
-    // Check if the entire puzzle is completely finished
     const isComplete = pieces.every(p => p.isPlaced);
     
-    if (isComplete && activeQuadrant === 0) {
-      localStorage.removeItem('sovereign_jigsaw_save');
-    } else {
-      localStorage.setItem('sovereign_jigsaw_save', JSON.stringify({
-        imageSrc,
-        cols,
-        rows,
-        activeQuadrant,
-        pieces
-      }));
-    }
-  }, [pieces, activeQuadrant, imageSrc, cols, rows]);
+    // Pull the master library array
+    let library = JSON.parse(localStorage.getItem('sovereign_jigsaw_library')) || [];
+    
+    // Find this specific puzzle or create a new entry
+    const existingIndex = library.findIndex(p => p.id === puzzleData.id);
+    const saveState = {
+      ...puzzleData,
+      pieces,
+      activeQuadrant,
+      filterIndex,
+      status: isComplete ? 'completed' : 'active',
+      lastPlayed: Date.now()
+    };
 
-  // 3. Precision Auto-Camera Framing
+    if (existingIndex >= 0) {
+      library[existingIndex] = saveState;
+    } else {
+      library.push(saveState);
+    }
+    
+    localStorage.setItem('sovereign_jigsaw_library', JSON.stringify(library));
+  }, [pieces, activeQuadrant, filterIndex, puzzleData]);
+
+  // 3. Camera Math
   useEffect(() => {
     if (!boardSize.w) return;
     
     const availableW = window.innerWidth - 40; 
     const availableH = window.innerHeight - 120 - 70 - 40; 
-    
     const cx = window.innerWidth / 2;
     const cy = 70 + (window.innerHeight - 120 - 70) / 2; 
 
@@ -113,53 +126,34 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
     let ty = boardSize.h / 2;
 
     if (activeQuadrant > 0) {
-      const midCol = Math.ceil(cols / 2);
-      const midRow = Math.ceil(rows / 2);
-      const pieceW = boardSize.w / cols;
-      const pieceH = boardSize.h / rows;
+      const midCol = Math.ceil(puzzleData.cols / 2);
+      const midRow = Math.ceil(puzzleData.rows / 2);
+      const pieceW = boardSize.w / puzzleData.cols;
+      const pieceH = boardSize.h / puzzleData.rows;
       
-      if (activeQuadrant === 1) {
-        quadW = midCol * pieceW;
-        quadH = midRow * pieceH;
-        tx = quadW / 2;
-        ty = quadH / 2;
-      } else if (activeQuadrant === 2) {
-        quadW = (cols - midCol) * pieceW;
-        quadH = midRow * pieceH;
-        tx = (midCol * pieceW) + (quadW / 2);
-        ty = quadH / 2;
-      } else if (activeQuadrant === 3) {
-        quadW = midCol * pieceW;
-        quadH = (rows - midRow) * pieceH;
-        tx = quadW / 2;
-        ty = (midRow * pieceH) + (quadH / 2);
-      } else if (activeQuadrant === 4) {
-        quadW = (cols - midCol) * pieceW;
-        quadH = (rows - midRow) * pieceH;
-        tx = (midCol * pieceW) + (quadW / 2);
-        ty = (midRow * pieceH) + (quadH / 2);
-      }
+      if (activeQuadrant === 1) { quadW = midCol * pieceW; quadH = midRow * pieceH; tx = quadW / 2; ty = quadH / 2; } 
+      else if (activeQuadrant === 2) { quadW = (puzzleData.cols - midCol) * pieceW; quadH = midRow * pieceH; tx = (midCol * pieceW) + (quadW / 2); ty = quadH / 2; } 
+      else if (activeQuadrant === 3) { quadW = midCol * pieceW; quadH = (puzzleData.rows - midRow) * pieceH; tx = quadW / 2; ty = (midRow * pieceH) + (quadH / 2); } 
+      else if (activeQuadrant === 4) { quadW = (puzzleData.cols - midCol) * pieceW; quadH = (puzzleData.rows - midRow) * pieceH; tx = (midCol * pieceW) + (quadW / 2); ty = (midRow * pieceH) + (quadH / 2); }
     }
 
     const scale = Math.min(availableW / quadW, availableH / quadH);
     setCamera({ scale, x: cx - (tx * scale), y: cy - (ty * scale) });
-  }, [activeQuadrant, boardSize, cols, rows]);
+  }, [activeQuadrant, boardSize, puzzleData.cols, puzzleData.rows]);
 
-  // 4. Quadrant Completion Tracker
+  // 4. Sector Advance
   useEffect(() => {
     if (activeQuadrant === 0 || pieces.length === 0) return;
     const quadPieces = pieces.filter(p => p.quadrant === activeQuadrant);
     const isDone = quadPieces.length > 0 && quadPieces.every(p => p.isPlaced);
     
     if (isDone) {
-      const timer = setTimeout(() => {
-        setActiveQuadrant(prev => prev === 4 ? 0 : prev + 1);
-      }, 1500);
+      const timer = setTimeout(() => { setActiveQuadrant(prev => prev === 4 ? 0 : prev + 1); }, 1500);
       return () => clearTimeout(timer);
     }
   }, [pieces, activeQuadrant]);
 
-  // 5. Render Loop
+  // 5. Main Canvas Render (with Filters)
   useEffect(() => {
     if (!image || pieces.length === 0) return;
     const canvas = canvasRef.current;
@@ -180,7 +174,9 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
 
     if (showGhost) {
       ctx.globalAlpha = 0.2;
+      ctx.filter = FILTERS[filterIndex].value; // Apply filter to ghost
       ctx.drawImage(image, 0, 0, boardSize.w, boardSize.h);
+      ctx.filter = 'none';
       ctx.globalAlpha = 1.0;
     }
 
@@ -205,6 +201,10 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
       ctx.clip();
       
       const maxTab = Math.min(piece.width, piece.height) * 0.5;
+      
+      // Apply active filter to the actual puzzle pieces
+      ctx.filter = FILTERS[filterIndex].value;
+      
       ctx.drawImage(
         image,
         ((piece.targetX - maxTab) / boardSize.w) * image.width,
@@ -214,6 +214,8 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
         -maxTab, -maxTab, piece.width + maxTab * 2, piece.height + maxTab * 2
       );
       
+      ctx.filter = 'none'; // Reset for next piece
+
       if (!piece.isPlaced) {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
         ctx.fill();
@@ -221,8 +223,9 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
       ctx.restore();
     });
     ctx.restore();
-  }, [pieces, image, activePieceId, showGhost, camera, boardSize]);
+  }, [pieces, image, activePieceId, showGhost, camera, boardSize, filterIndex]);
 
+  // Pointer Handlers
   const handlePointerDownBoard = (e) => {
     const worldX = (e.clientX - camera.x) / camera.scale;
     const worldY = (e.clientY - camera.y) / camera.scale;
@@ -251,12 +254,7 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
     const spawnY = worldY - (p.height / 2);
     
     setPieces(prev => prev.map(piece => 
-      piece.id === p.id ? { 
-        ...piece, 
-        inTray: false, 
-        currentX: spawnX, 
-        currentY: spawnY 
-      } : piece
+      piece.id === p.id ? { ...piece, inTray: false, currentX: spawnX, currentY: spawnY } : piece
     ));
     setActivePieceId(p.id);
     setOffset({ x: worldX - spawnX, y: worldY - spawnY });
@@ -280,23 +278,18 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
     
     setPieces(prev => prev.map(p => {
       if (p.id === activePieceId) {
-        
-        // 1. Snap Check
         const snapTolerance = Math.max(30, Math.min(p.width, p.height) * 0.25); 
         if (Math.abs(p.currentX - p.targetX) < snapTolerance && Math.abs(p.currentY - p.targetY) < snapTolerance) {
           return { ...p, currentX: p.targetX, currentY: p.targetY, isPlaced: true, inTray: false };
         }
 
-        // 2. Void Check (Bounce Back)
         const pieceScreenCenterX = (p.currentX + p.width / 2) * camera.scale + camera.x;
         const pieceScreenCenterY = (p.currentY + p.height / 2) * camera.scale + camera.y;
 
         const isOverTray = e.clientY > window.innerHeight - 120;
         const isLostInVoid = 
-          pieceScreenCenterX < 0 || 
-          pieceScreenCenterX > window.innerWidth || 
-          pieceScreenCenterY < 70 || 
-          pieceScreenCenterY > window.innerHeight - 120;
+          pieceScreenCenterX < 0 || pieceScreenCenterX > window.innerWidth || 
+          pieceScreenCenterY < 70 || pieceScreenCenterY > window.innerHeight - 120;
 
         if (isOverTray || isLostInVoid) {
           return { ...p, inTray: true, isPlaced: false };
@@ -307,6 +300,10 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
     setActivePieceId(null);
   };
 
+  const cycleFilter = () => {
+    setFilterIndex(prev => (prev + 1) % FILTERS.length);
+  };
+
   const trayPieces = pieces.filter(p => 
     p.inTray && 
     (activeQuadrant === 0 || p.quadrant === activeQuadrant) &&
@@ -314,13 +311,9 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
   );
 
   return (
-    <div 
-      className="flex flex-col w-full h-full relative overflow-hidden transition-colors duration-500" 
-      style={{ backgroundColor: bgColor }}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
-    >
+    <div className="flex flex-col w-full h-full relative overflow-hidden transition-colors duration-500" style={{ backgroundColor: bgColor }} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp}>
+      
+      {/* TOOLBAR */}
       <div className="flex items-center justify-between p-4 bg-black/40 backdrop-blur-sm z-20 w-full absolute top-0 h-[70px] pointer-events-none">
         <button onClick={onExit} className="pointer-events-auto p-2 rounded-full bg-black/50 text-white hover:bg-black/70">
           <ArrowLeft size={24} />
@@ -333,6 +326,15 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
         )}
         
         <div className="pointer-events-auto flex gap-2 bg-white/10 p-1 rounded-full relative">
+          
+          {/* NEW FILTER BUTTON */}
+          <button onClick={cycleFilter} className="p-2 rounded-full text-emerald-300 hover:bg-white/20 relative group">
+            <Palette size={20} />
+            <span className="absolute -bottom-8 right-0 bg-black/80 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap">
+              {FILTERS[filterIndex].name}
+            </span>
+          </button>
+
           <button onClick={() => setFilterEdges(!filterEdges)} className={`p-2 rounded-full ${filterEdges ? 'bg-emerald-500 text-white' : 'text-neutral-300 hover:bg-white/20'}`}>
             <Grid size={20} />
           </button>
@@ -346,40 +348,28 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit, isRe
           {showBgPicker && (
             <div className="absolute top-14 right-0 bg-neutral-800 p-3 rounded-xl shadow-2xl flex flex-wrap w-40 gap-3 border border-neutral-700">
               {bgOptions.map(color => (
-                <button 
-                  key={color} 
-                  onClick={() => { setBgColor(color); setShowBgPicker(false); }}
-                  className="w-8 h-8 rounded-full border-2 border-white/20 shadow-inner"
-                  style={{ backgroundColor: color }}
-                />
+                <button key={color} onClick={() => { setBgColor(color); setShowBgPicker(false); }} className="w-8 h-8 rounded-full border-2 border-white/20 shadow-inner" style={{ backgroundColor: color }} />
               ))}
             </div>
           )}
         </div>
       </div>
 
+      {/* CANVAS */}
       <div className="flex-1 w-full h-full relative">
-        <canvas 
-          ref={canvasRef}
-          className="touch-none absolute top-0 left-0 transition-transform duration-1000 ease-in-out"
-          onPointerDown={handlePointerDownBoard}
-        />
+        <canvas ref={canvasRef} className="touch-none absolute top-0 left-0 transition-transform duration-1000 ease-in-out" onPointerDown={handlePointerDownBoard} />
       </div>
 
+      {/* TRAY */}
       <div className="h-[120px] bg-black/50 backdrop-blur-md border-t border-white/10 w-full flex items-center px-4 overflow-x-auto whitespace-nowrap gap-4 z-20 touch-pan-x absolute bottom-0 pointer-events-auto">
         {trayPieces.length === 0 && activeQuadrant > 0 ? (
           <p className="text-white/50 mx-auto text-sm font-bold tracking-wide">Sector Complete</p>
         ) : trayPieces.length === 0 ? (
-          <p className="text-white/50 mx-auto text-sm font-bold tracking-wide">Puzzle Complete</p>
+          <p className="text-white/50 mx-auto text-sm font-bold tracking-wide">Puzzle Complete!</p>
         ) : (
           trayPieces.map(p => (
-            <div 
-              key={p.id} 
-              onPointerDown={(e) => handlePointerDownTray(e, p)}
-              className="h-20 w-20 bg-white/5 rounded-xl border border-white/10 flex items-center justify-center cursor-pointer shadow-lg shrink-0"
-              style={{ touchAction: 'pan-x' }}
-            >
-              <PieceThumbnail piece={p} image={image} boardWidth={boardSize.w} boardHeight={boardSize.h} />
+            <div key={p.id} onPointerDown={(e) => handlePointerDownTray(e, p)} className="h-20 w-20 bg-white/5 rounded-xl border border-white/10 flex items-center justify-center cursor-pointer shadow-lg shrink-0" style={{ touchAction: 'pan-x' }}>
+              <PieceThumbnail piece={p} image={image} boardWidth={boardSize.w} boardHeight={boardSize.h} imageFilter={FILTERS[filterIndex].value} />
             </div>
           ))
         )}
