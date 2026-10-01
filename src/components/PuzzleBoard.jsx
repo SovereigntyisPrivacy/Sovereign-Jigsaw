@@ -11,11 +11,9 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [boardSize, setBoardSize] = useState({ w: 0, h: 0 });
   
-  // Auto-Quadrant Camera State
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [activeQuadrant, setActiveQuadrant] = useState(0); 
   
-  // UI States
   const [bgColor, setBgColor] = useState('#8B5A2B');
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [filterEdges, setFilterEdges] = useState(false);
@@ -29,8 +27,9 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     img.onload = () => {
       setImage(img);
       const canvas = canvasRef.current;
-      const maxHeight = window.innerHeight * 0.7; 
+      // Maximize board space
       const maxWidth = window.innerWidth * 0.95;
+      const maxHeight = window.innerHeight - 220; // Accounts for 70px top bar + 120px tray + padding
       const scale = Math.min(maxWidth / img.width, maxHeight / img.height);
       
       canvas.width = img.width * scale;
@@ -38,8 +37,6 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       setBoardSize({ w: canvas.width, h: canvas.height });
 
       const { pieces: newPieces } = generatePuzzleGrid(canvas.width, canvas.height, cols, rows);
-      
-      // If 100+ pieces, engage quadrant mode
       const useQuadrants = (cols * rows) >= 100;
       const midX = canvas.width / 2;
       const midY = canvas.height / 2;
@@ -49,10 +46,10 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
         if (useQuadrants) {
           const centerX = p.targetX + p.width / 2;
           const centerY = p.targetY + p.height / 2;
-          if (centerX <= midX && centerY <= midY) quad = 1;       // Top Left
-          else if (centerX > midX && centerY <= midY) quad = 2;   // Top Right
-          else if (centerX <= midX && centerY > midY) quad = 3;   // Bottom Left
-          else quad = 4;                                          // Bottom Right
+          if (centerX <= midX && centerY <= midY) quad = 1;
+          else if (centerX > midX && centerY <= midY) quad = 2;
+          else if (centerX <= midX && centerY > midY) quad = 3;
+          else quad = 4;
         }
         return { ...p, inTray: true, quadrant: quad };
       });
@@ -67,19 +64,31 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
   useEffect(() => {
     if (!boardSize.w) return;
     const cx = window.innerWidth / 2;
-    const cy = (window.innerHeight - 120) / 2; // Offset for the tray
+    // Set absolute center between the top toolbar (70px) and bottom tray (120px)
+    const cy = (window.innerHeight - 120 + 70) / 2; 
 
     let scale = 1;
     let tx = boardSize.w / 2;
     let ty = boardSize.h / 2;
 
-    // Zoom in 2x and lock coordinates to the active quadrant
     if (activeQuadrant > 0) {
-      scale = 2.1; 
+      // Dynamically measure the quadrant size vs screen size to maximize viewing area
+      const quadW = boardSize.w / 2;
+      const quadH = boardSize.h / 2;
+      const availableW = window.innerWidth * 0.9;
+      const availableH = window.innerHeight - 240; 
+      
+      scale = Math.min(availableW / quadW, availableH / quadH);
+      scale = Math.max(1.2, Math.min(scale, 4)); // Prevent extreme zooming
+
       if (activeQuadrant === 1) { tx = boardSize.w * 0.25; ty = boardSize.h * 0.25; }
       if (activeQuadrant === 2) { tx = boardSize.w * 0.75; ty = boardSize.h * 0.25; }
       if (activeQuadrant === 3) { tx = boardSize.w * 0.25; ty = boardSize.h * 0.75; }
       if (activeQuadrant === 4) { tx = boardSize.w * 0.75; ty = boardSize.h * 0.75; }
+    } else {
+      // Full board center
+      setCamera({ scale: 1, x: cx - tx, y: ((window.innerHeight - 120) / 2) - ty });
+      return;
     }
 
     setCamera({ scale, x: cx - (tx * scale), y: cy - (ty * scale) });
@@ -92,7 +101,6 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     const isDone = quadPieces.length > 0 && quadPieces.every(p => p.isPlaced);
     
     if (isDone) {
-      // 1.5s delay so she can see the finished section before it automatically slides over
       const timer = setTimeout(() => {
         setActiveQuadrant(prev => prev === 4 ? 0 : prev + 1);
       }, 1500);
@@ -100,7 +108,6 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     }
   }, [pieces, activeQuadrant]);
 
-  // Main Render Loop
   useEffect(() => {
     if (!image || pieces.length === 0) return;
     const canvas = canvasRef.current;
@@ -109,7 +116,6 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
     ctx.save();
     
-    // Apply automated camera transform
     ctx.translate(camera.x, camera.y);
     ctx.scale(camera.scale, camera.scale);
 
@@ -159,7 +165,6 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       }
       ctx.restore();
     });
-
     ctx.restore();
   }, [pieces, image, activePieceId, showGhost, camera]);
 
@@ -186,16 +191,28 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     const worldX = (e.clientX - camera.x) / camera.scale;
     const worldY = (e.clientY - camera.y) / camera.scale;
 
+    // Viewport calculation to ensure it doesn't spawn off-screen
+    const minWorldX = -camera.x / camera.scale;
+    const maxWorldX = (window.innerWidth - camera.x) / camera.scale - p.width;
+    const minWorldY = (70 - camera.y) / camera.scale; 
+    const maxWorldY = (window.innerHeight - 120 - camera.y) / camera.scale - p.height; 
+
+    let spawnX = worldX - (p.width / 2);
+    let spawnY = worldY - (p.height / 2);
+
+    spawnX = Math.max(minWorldX, Math.min(maxWorldX, spawnX));
+    spawnY = Math.max(minWorldY, Math.min(maxWorldY, spawnY));
+
     setPieces(prev => prev.map(piece => 
       piece.id === p.id ? { 
         ...piece, 
         inTray: false, 
-        currentX: worldX - (p.width / 2), 
-        currentY: worldY - (p.height / 2) 
+        currentX: spawnX, 
+        currentY: spawnY 
       } : piece
     ));
     setActivePieceId(p.id);
-    setOffset({ x: p.width / 2, y: p.height / 2 });
+    setOffset({ x: worldX - spawnX, y: worldY - spawnY });
   };
 
   const handlePointerMove = (e) => {
@@ -209,10 +226,14 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     let newX = worldX - offset.x;
     let newY = worldY - offset.y;
     
-    // BORDER LOCK: Prevents piece from being dragged off the canvas boundaries
-    const buffer = Math.min(p.width, p.height) * 0.25; // Allows tabs to overhang slightly
-    newX = Math.max(-buffer, Math.min(boardSize.w - p.width + buffer, newX));
-    newY = Math.max(-buffer, Math.min(boardSize.h - p.height + buffer, newY));
+    // STRICT VIEWPORT CAGE: Prevents piece from being dragged out of the physical screen area
+    const minWorldX = -camera.x / camera.scale;
+    const maxWorldX = (window.innerWidth - camera.x) / camera.scale - p.width;
+    const minWorldY = (70 - camera.y) / camera.scale; // Block top toolbar area
+    const maxWorldY = (window.innerHeight - 120 - camera.y) / camera.scale - p.height; // Block tray area
+
+    newX = Math.max(minWorldX, Math.min(maxWorldX, newX));
+    newY = Math.max(minWorldY, Math.min(maxWorldY, newY));
 
     setPieces(prev => prev.map(piece => 
       piece.id === activePieceId ? { ...piece, currentX: newX, currentY: newY } : piece
@@ -237,7 +258,6 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
     setActivePieceId(null);
   };
 
-  // Only show pieces belonging to the active quadrant
   const trayPieces = pieces.filter(p => 
     p.inTray && 
     (activeQuadrant === 0 || p.quadrant === activeQuadrant) &&
@@ -252,12 +272,11 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
     >
-      <div className="flex items-center justify-between p-4 bg-black/40 backdrop-blur-sm z-20 w-full absolute top-0">
+      <div className="flex items-center justify-between p-4 bg-black/40 backdrop-blur-sm z-20 w-full absolute top-0 h-[70px]">
         <button onClick={onExit} className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70">
           <ArrowLeft size={24} />
         </button>
         
-        {/* Quadrant Indicator */}
         {activeQuadrant > 0 && (
           <div className="text-white/80 font-bold tracking-widest text-sm bg-black/30 px-4 py-1 rounded-full border border-white/10">
             SECTOR {activeQuadrant} / 4
@@ -300,7 +319,7 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
         />
       </div>
 
-      <div className="h-28 bg-black/50 backdrop-blur-md border-t border-white/10 w-full flex items-center px-4 overflow-x-auto whitespace-nowrap gap-4 z-20 touch-pan-x absolute bottom-0">
+      <div className="h-[120px] bg-black/50 backdrop-blur-md border-t border-white/10 w-full flex items-center px-4 overflow-x-auto whitespace-nowrap gap-4 z-20 touch-pan-x absolute bottom-0">
         {trayPieces.length === 0 ? (
           <p className="text-white/50 mx-auto text-sm font-medium">Sector Complete</p>
         ) : (
