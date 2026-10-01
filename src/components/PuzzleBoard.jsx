@@ -7,11 +7,10 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
   const canvasRef = useRef(null);
   const [pieces, setPieces] = useState([]);
   const [image, setImage] = useState(null);
-  const [activePiece, setActivePiece] = useState(null);
+  const [activePieceId, setActivePieceId] = useState(null);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [boardSize, setBoardSize] = useState({ w: 0, h: 0 });
   
-  // UI States
   const [bgColor, setBgColor] = useState('#8B5A2B');
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [filterEdges, setFilterEdges] = useState(false);
@@ -53,8 +52,8 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
 
     const boardPieces = pieces.filter(p => !p.inTray);
     const sortedPieces = [...boardPieces].sort((a, b) => {
-      if (a.id === activePiece?.id) return 1;
-      if (b.id === activePiece?.id) return -1;
+      if (a.id === activePieceId) return 1;
+      if (b.id === activePieceId) return -1;
       if (a.isPlaced) return -1;
       if (b.isPlaced) return 1;
       return 0;
@@ -71,7 +70,6 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       ctx.stroke();
       ctx.clip();
       
-      // maxTab fix: pulls image data from slightly outside the square to cover the tabs
       const maxTab = Math.min(piece.width, piece.height) * 0.5;
       ctx.drawImage(
         image,
@@ -88,14 +86,12 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       }
       ctx.restore();
     });
-  }, [pieces, image, activePiece, showGhost]);
+  }, [pieces, image, activePieceId, showGhost]);
 
-  const handleStart = (e) => {
+  const handlePointerDownBoard = (e) => {
     const rect = canvasRef.current.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
     const boardPieces = pieces.filter(p => !p.inTray);
     for (let i = boardPieces.length - 1; i >= 0; i--) {
@@ -104,56 +100,70 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
       
       if (x >= p.currentX - (p.width*0.25) && x <= p.currentX + p.width + (p.width*0.25) && 
           y >= p.currentY - (p.height*0.25) && y <= p.currentY + p.height + (p.height*0.25)) {
-        setActivePiece(p);
+        setActivePieceId(p.id);
         setOffset({ x: x - p.currentX, y: y - p.currentY });
+        e.target.setPointerCapture(e.pointerId);
         break;
       }
     }
   };
 
-  const handleMove = (e) => {
-    if (!activePiece) return;
+  const handlePointerDownTray = (e, p) => {
     const rect = canvasRef.current.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const newX = e.clientX - rect.left - (p.width / 2);
+    const newY = e.clientY - rect.top - (p.height / 2);
+
+    setPieces(prev => prev.map(piece => 
+      piece.id === p.id ? { ...piece, inTray: false, currentX: newX, currentY: newY } : piece
+    ));
+    setActivePieceId(p.id);
+    setOffset({ x: p.width / 2, y: p.height / 2 });
+  };
+
+  const handlePointerMove = (e) => {
+    if (!activePieceId) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const newX = e.clientX - rect.left - offset.x;
+    const newY = e.clientY - rect.top - offset.y;
     
     setPieces(prev => prev.map(p => 
-      p.id === activePiece.id 
-        ? { ...p, currentX: (clientX - rect.left) - offset.x, currentY: (clientY - rect.top) - offset.y }
-        : p
+      p.id === activePieceId ? { ...p, currentX: newX, currentY: newY } : p
     ));
   };
 
-  const handleEnd = () => {
-    if (!activePiece) return;
+  const handlePointerUp = (e) => {
+    if (!activePieceId) return;
+    
+    // Throw back to tray if dropped in the bottom 120 pixels
+    const isOverTray = e.clientY > window.innerHeight - 120;
+
     setPieces(prev => prev.map(p => {
-      if (p.id === activePiece.id) {
-        const snap = 25; 
-        if (Math.abs(p.currentX - p.targetX) < snap && Math.abs(p.currentY - p.targetY) < snap) {
+      if (p.id === activePieceId) {
+        if (isOverTray) {
+          return { ...p, inTray: true, isPlaced: false };
+        }
+
+        // Expanded magnetic snapping radius
+        const snapTolerance = Math.max(40, Math.min(p.width, p.height) * 0.35); 
+        if (Math.abs(p.currentX - p.targetX) < snapTolerance && Math.abs(p.currentY - p.targetY) < snapTolerance) {
           return { ...p, currentX: p.targetX, currentY: p.targetY, isPlaced: true };
         }
       }
       return p;
     }));
-    setActivePiece(null);
-  };
-
-  const pullFromTray = (id) => {
-    setPieces(prev => prev.map(p => 
-      p.id === id ? { 
-        ...p, 
-        inTray: false, 
-        currentX: canvasRef.current.width / 2 - p.width / 2, 
-        currentY: canvasRef.current.height / 2 - p.height / 2 
-      } : p
-    ));
+    setActivePieceId(null);
   };
 
   const trayPieces = pieces.filter(p => p.inTray && (!filterEdges || Object.values(p.edges).includes(0)));
 
   return (
-    <div className="flex flex-col w-full h-full relative" style={{ backgroundColor: bgColor }}>
-      
+    <div 
+      className="flex flex-col w-full h-full relative overflow-hidden" 
+      style={{ backgroundColor: bgColor }}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+    >
       <div className="flex items-center justify-between p-4 bg-black/40 backdrop-blur-sm z-10 w-full">
         <button onClick={onExit} className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70">
           <ArrowLeft size={24} />
@@ -185,24 +195,24 @@ export default function PuzzleBoard({ imageSrc, cols = 4, rows = 4, onExit }) {
         </div>
       </div>
 
-      <div className="flex-1 flex justify-center items-center p-2 overflow-hidden w-full">
+      <div className="flex-1 flex justify-center items-center p-2 overflow-hidden w-full relative">
         <canvas 
           ref={canvasRef}
           className="shadow-2xl touch-none"
-          onMouseDown={handleStart} onMouseMove={handleMove} onMouseUp={handleEnd} onMouseLeave={handleEnd}
-          onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={handleEnd}
+          onPointerDown={handlePointerDownBoard}
         />
       </div>
 
-      <div className="h-28 bg-black/50 backdrop-blur-md border-t border-white/10 w-full flex items-center px-4 overflow-x-auto whitespace-nowrap gap-4 z-10">
+      <div className="h-28 bg-black/50 backdrop-blur-md border-t border-white/10 w-full flex items-center px-4 overflow-x-auto whitespace-nowrap gap-4 z-10 touch-pan-x">
         {trayPieces.length === 0 ? (
           <p className="text-white/50 mx-auto text-sm font-medium">Tray is empty</p>
         ) : (
           trayPieces.map(p => (
             <div 
               key={p.id} 
-              onClick={() => pullFromTray(p.id)}
-              className="h-20 w-20 bg-white/5 rounded-lg border border-white/10 flex items-center justify-center cursor-pointer hover:bg-white/10 transition-colors shadow-lg shrink-0"
+              onPointerDown={(e) => handlePointerDownTray(e, p)}
+              className="h-20 w-20 bg-white/5 rounded-lg border border-white/10 flex items-center justify-center cursor-pointer shadow-lg shrink-0"
+              style={{ touchAction: 'pan-x' }}
             >
               <PieceThumbnail piece={p} image={image} boardWidth={boardSize.w} boardHeight={boardSize.h} />
             </div>
