@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { ImagePlus, Library } from 'lucide-react'
 import PuzzleBoard from './components/PuzzleBoard'
@@ -8,7 +8,16 @@ function App() {
   const [setupPhase, setSetupPhase] = useState(false)
   const [pieceCount, setPieceCount] = useState(100)
   const [gridConfig, setGridConfig] = useState({ cols: 4, rows: 4 })
+  const [hasSave, setHasSave] = useState(false)
+  const [isResuming, setIsResuming] = useState(false)
   const imgRef = useRef(null)
+
+  // Check for saved game when the app loads or returns to menu
+  useEffect(() => {
+    const saved = localStorage.getItem('sovereign_jigsaw_save')
+    if (saved) setHasSave(true)
+    else setHasSave(false)
+  }, [imageSrc]) 
 
   const openGallery = async () => {
     try {
@@ -25,6 +34,7 @@ function App() {
         imgRef.current = img;
         setImageSrc(image.webPath);
         setSetupPhase(true);
+        setIsResuming(false);
       };
       img.src = image.webPath;
     } catch (error) {
@@ -40,9 +50,20 @@ function App() {
     setSetupPhase(false)
   }
 
+  const resumeGame = () => {
+    const saved = JSON.parse(localStorage.getItem('sovereign_jigsaw_save'))
+    if (saved) {
+      setImageSrc(saved.imageSrc)
+      setGridConfig({ cols: saved.cols, rows: saved.rows })
+      setIsResuming(true)
+      setSetupPhase(false)
+    }
+  }
+
   const handleExit = () => {
     setImageSrc(null)
     setSetupPhase(false)
+    setIsResuming(false)
   }
 
   return (
@@ -61,17 +82,18 @@ function App() {
             </button>
             
             <button 
-              className="bg-neutral-800 p-8 rounded-3xl shadow-xl flex flex-col items-center justify-center gap-4 opacity-60 border border-neutral-700"
+              onClick={hasSave ? resumeGame : undefined}
+              className={`${hasSave ? 'bg-neutral-700 hover:bg-neutral-600 border-neutral-500 cursor-pointer active:scale-95' : 'bg-neutral-800 opacity-50 border-neutral-700 cursor-not-allowed'} p-8 rounded-3xl shadow-xl flex flex-col items-center justify-center gap-4 transition-all border`}
             >
-              <Library size={48} className="text-neutral-500" />
-              <span className="text-lg font-bold text-neutral-400">My Puzzles</span>
+              <Library size={48} className={hasSave ? "text-emerald-400" : "text-neutral-500"} />
+              <span className={`text-lg font-bold ${hasSave ? "text-white" : "text-neutral-400"}`}>My Puzzles</span>
             </button>
           </div>
         </div>
       ) : setupPhase ? (
         <div className="flex flex-col items-center justify-center w-full max-w-md h-full mt-20 bg-neutral-800 p-8 rounded-3xl shadow-2xl border border-neutral-700">
-          <div className="w-full h-48 mb-8 rounded-2xl overflow-hidden border-2 border-neutral-700 shadow-inner">
-             <img src={imageSrc} alt="Preview" className="w-full h-full object-cover" />
+          <div className="w-full h-48 mb-8 rounded-2xl overflow-hidden border-2 border-neutral-700 shadow-inner bg-black flex items-center justify-center">
+             <img src={imageSrc} alt="Preview" className="max-w-full max-h-full object-contain" />
           </div>
 
           <h2 className="text-2xl font-bold mb-6 text-white">Choose Difficulty</h2>
@@ -103,6 +125,7 @@ function App() {
             cols={gridConfig.cols} 
             rows={gridConfig.rows} 
             onExit={handleExit} 
+            isResuming={isResuming}
           />
         </div>
       )}
