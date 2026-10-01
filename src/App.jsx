@@ -1,21 +1,33 @@
 import { useState, useRef, useEffect } from 'react'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
-import { ImagePlus, Library, Play, Trash2, CheckCircle2 } from 'lucide-react'
+import { ImagePlus, Library, Play, Trash2, CheckCircle2, Palette } from 'lucide-react'
 import PuzzleBoard from './components/PuzzleBoard'
 
+const FILTERS = [
+  { name: 'Normal', value: 'none' },
+  { name: 'B&W', value: 'grayscale(100%) contrast(120%)' },
+  { name: 'Vintage', value: 'sepia(80%) contrast(110%)' },
+  { name: 'Vibrant', value: 'saturate(200%) contrast(110%)' }
+];
+
 function App() {
-  const [currentView, setCurrentView] = useState('home') // home, setup, game, library
+  const [currentView, setCurrentView] = useState('home') 
   const [library, setLibrary] = useState([])
   const [activePuzzle, setActivePuzzle] = useState(null)
   
   const [pieceCount, setPieceCount] = useState(100)
+  const [filterIndex, setFilterIndex] = useState(0)
   const imgRef = useRef(null)
 
-  // Load Library on boot
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem('sovereign_jigsaw_library')) || []
-    // Sort by most recently played
-    setLibrary(saved.sort((a, b) => b.lastPlayed - a.lastPlayed))
+    try {
+      const savedData = JSON.parse(localStorage.getItem('sovereign_jigsaw_library'));
+      // CRASH FIX: Ensure the loaded data is actually an array before sorting
+      const saved = Array.isArray(savedData) ? savedData : [];
+      setLibrary(saved.sort((a, b) => b.lastPlayed - a.lastPlayed));
+    } catch (e) {
+      setLibrary([]);
+    }
   }, [currentView])
 
   const openGallery = async () => {
@@ -32,6 +44,7 @@ function App() {
       img.onload = () => {
         imgRef.current = img;
         setActivePuzzle({ id: Date.now(), imageSrc: image.webPath });
+        setFilterIndex(0); // Reset filter for new puzzle
         setCurrentView('setup');
       };
       img.src = image.webPath;
@@ -45,7 +58,8 @@ function App() {
     const cols = Math.max(2, Math.round(Math.sqrt(pieceCount * aspect)))
     const rows = Math.max(2, Math.round(Math.sqrt(pieceCount / aspect)))
     
-    setActivePuzzle(prev => ({ ...prev, cols, rows }))
+    // Bake the chosen filter directly into the save file
+    setActivePuzzle(prev => ({ ...prev, cols, rows, filterIndex }))
     setCurrentView('game')
   }
 
@@ -68,12 +82,12 @@ function App() {
           <h1 className="text-4xl font-black mb-12 text-emerald-500 tracking-wide drop-shadow-md">Sovereign Jigsaw</h1>
           
           <div className="grid grid-cols-2 gap-4 w-full">
-            <button onClick={openGallery} className="bg-emerald-700 hover:bg-emerald-600 p-8 rounded-3xl shadow-xl flex flex-col items-center justify-center gap-4 active:scale-95 border border-emerald-500/30">
+            <button onClick={openGallery} className="bg-emerald-700 hover:bg-emerald-600 p-8 rounded-3xl shadow-xl flex flex-col items-center justify-center gap-4 active:scale-95 border border-emerald-500/30 transition-transform">
               <ImagePlus size={48} className="text-emerald-100" />
               <span className="text-lg font-bold text-emerald-50">New Puzzle</span>
             </button>
             
-            <button onClick={() => setCurrentView('library')} className="bg-neutral-800 hover:bg-neutral-700 p-8 rounded-3xl shadow-xl flex flex-col items-center justify-center gap-4 active:scale-95 border border-neutral-600">
+            <button onClick={() => setCurrentView('library')} className="bg-neutral-800 hover:bg-neutral-700 p-8 rounded-3xl shadow-xl flex flex-col items-center justify-center gap-4 active:scale-95 border border-neutral-600 transition-transform relative">
               <Library size={48} className="text-emerald-400" />
               <span className="text-lg font-bold text-white">My Puzzles</span>
               {library.length > 0 && (
@@ -88,7 +102,7 @@ function App() {
         <div className="w-full max-w-md flex flex-col h-full mt-4">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-3xl font-black text-emerald-400">My Puzzles</h2>
-            <button onClick={() => setCurrentView('home')} className="bg-neutral-800 p-3 rounded-full hover:bg-neutral-700">
+            <button onClick={() => setCurrentView('home')} className="bg-neutral-800 p-3 rounded-full hover:bg-neutral-700 transition-colors">
               <ArrowLeft size={24} />
             </button>
           </div>
@@ -98,13 +112,20 @@ function App() {
           ) : (
             <div className="flex flex-col gap-4 overflow-y-auto pb-10">
               {library.map(puzzle => {
+                // CRASH FIX: Ignore corrupted saves missing piece data
+                if (!puzzle || !puzzle.pieces) return null;
+
                 const totalPieces = puzzle.cols * puzzle.rows;
                 const placedPieces = puzzle.pieces.filter(p => p.isPlaced).length;
                 const percent = Math.round((placedPieces / totalPieces) * 100);
                 
                 return (
                   <div key={puzzle.id} className="bg-neutral-800 border border-neutral-700 rounded-2xl p-4 flex gap-4 items-center shadow-lg">
-                    <img src={puzzle.imageSrc} className="w-24 h-24 rounded-xl object-cover bg-black" />
+                    <img 
+                      src={puzzle.imageSrc} 
+                      className="w-24 h-24 rounded-xl object-cover bg-black" 
+                      style={{ filter: FILTERS[puzzle.filterIndex || 0].value }}
+                    />
                     
                     <div className="flex-1">
                       <div className="flex justify-between items-start mb-2">
@@ -117,10 +138,10 @@ function App() {
                       </div>
                       
                       <div className="flex gap-2 mt-4">
-                        <button onClick={() => resumePuzzle(puzzle)} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg font-bold flex items-center justify-center gap-2">
+                        <button onClick={() => resumePuzzle(puzzle)} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors">
                           <Play size={18} /> {puzzle.status === 'completed' ? 'View' : 'Resume'}
                         </button>
-                        <button onClick={() => deletePuzzle(puzzle.id)} className="bg-red-900/50 hover:bg-red-800 text-red-400 p-2 rounded-lg">
+                        <button onClick={() => deletePuzzle(puzzle.id)} className="bg-red-900/50 hover:bg-red-800 text-red-400 p-2 rounded-lg transition-colors">
                           <Trash2 size={20} />
                         </button>
                       </div>
@@ -135,8 +156,19 @@ function App() {
 
       {currentView === 'setup' && (
         <div className="flex flex-col items-center justify-center w-full max-w-md h-full mt-20 bg-neutral-800 p-8 rounded-3xl shadow-2xl border border-neutral-700">
-          <div className="w-full h-48 mb-8 rounded-2xl overflow-hidden border-2 border-neutral-700 shadow-inner bg-black flex items-center justify-center">
-             <img src={activePuzzle?.imageSrc} className="max-w-full max-h-full object-contain" />
+          
+          <div className="w-full h-56 mb-8 rounded-2xl overflow-hidden border-2 border-neutral-700 shadow-inner bg-black flex items-center justify-center relative">
+             <img 
+               src={activePuzzle?.imageSrc} 
+               className="max-w-full max-h-full object-contain transition-all duration-300" 
+               style={{ filter: FILTERS[filterIndex].value }}
+             />
+             <button 
+               onClick={() => setFilterIndex(prev => (prev + 1) % FILTERS.length)} 
+               className="absolute bottom-3 right-3 bg-black/70 p-2 rounded-xl border border-white/20 text-emerald-400 backdrop-blur flex items-center gap-2 hover:bg-black/90 active:scale-95 transition-all"
+             >
+               <Palette size={18} /> <span className="text-sm font-bold pr-1">{FILTERS[filterIndex].name}</span>
+             </button>
           </div>
 
           <h2 className="text-2xl font-bold mb-6 text-white">Choose Difficulty</h2>
@@ -154,8 +186,8 @@ function App() {
             />
           </div>
           <div className="flex gap-4 w-full">
-            <button onClick={() => setCurrentView('home')} className="flex-1 py-4 rounded-xl bg-neutral-700 hover:bg-neutral-600 font-bold text-lg">Cancel</button>
-            <button onClick={startGame} className="flex-1 py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold text-lg shadow-lg">Start Game</button>
+            <button onClick={() => setCurrentView('home')} className="flex-1 py-4 rounded-xl bg-neutral-700 hover:bg-neutral-600 font-bold text-lg transition-colors">Cancel</button>
+            <button onClick={startGame} className="flex-1 py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold text-lg shadow-lg transition-colors">Start Game</button>
           </div>
         </div>
       )}

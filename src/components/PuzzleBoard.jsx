@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Settings, Eye, Grid, ArrowLeft, Palette } from 'lucide-react';
+import { Settings, Eye, Grid, ArrowLeft } from 'lucide-react';
 import { generatePuzzleGrid, buildPiecePath } from '../utils/jigsawMath';
 import PieceThumbnail from './PieceThumbnail';
 
@@ -21,8 +21,8 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [activeQuadrant, setActiveQuadrant] = useState(0); 
   
-  // UI & Filter States
-  const [filterIndex, setFilterIndex] = useState(0);
+  // UI States
+  const filterIndex = puzzleData.filterIndex || 0;
   const [bgColor, setBgColor] = useState('#8B5A2B');
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [filterEdges, setFilterEdges] = useState(false);
@@ -30,7 +30,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
 
   const bgOptions = ['#2D3748', '#4A5568', '#276749', '#E2E8F0', '#D6BC97', '#8B5A2B', '#171717'];
 
-  // 1. Initialize Board
   useEffect(() => {
     const img = new Image();
     img.onload = () => {
@@ -46,7 +45,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
       if (puzzleData.pieces) {
         setPieces(puzzleData.pieces);
         setActiveQuadrant(puzzleData.activeQuadrant || 0);
-        setFilterIndex(puzzleData.filterIndex || 0);
         return;
       }
 
@@ -82,22 +80,18 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
     img.src = puzzleData.imageSrc;
   }, [puzzleData]);
 
-  // 2. Library Auto-Save Engine
   useEffect(() => {
     if (pieces.length === 0) return;
     
     const isComplete = pieces.every(p => p.isPlaced);
-    
-    // Pull the master library array
     let library = JSON.parse(localStorage.getItem('sovereign_jigsaw_library')) || [];
+    if (!Array.isArray(library)) library = [];
     
-    // Find this specific puzzle or create a new entry
     const existingIndex = library.findIndex(p => p.id === puzzleData.id);
     const saveState = {
       ...puzzleData,
       pieces,
       activeQuadrant,
-      filterIndex,
       status: isComplete ? 'completed' : 'active',
       lastPlayed: Date.now()
     };
@@ -109,9 +103,8 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
     }
     
     localStorage.setItem('sovereign_jigsaw_library', JSON.stringify(library));
-  }, [pieces, activeQuadrant, filterIndex, puzzleData]);
+  }, [pieces, activeQuadrant, puzzleData]);
 
-  // 3. Camera Math
   useEffect(() => {
     if (!boardSize.w) return;
     
@@ -141,7 +134,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
     setCamera({ scale, x: cx - (tx * scale), y: cy - (ty * scale) });
   }, [activeQuadrant, boardSize, puzzleData.cols, puzzleData.rows]);
 
-  // 4. Sector Advance
   useEffect(() => {
     if (activeQuadrant === 0 || pieces.length === 0) return;
     const quadPieces = pieces.filter(p => p.quadrant === activeQuadrant);
@@ -153,7 +145,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
     }
   }, [pieces, activeQuadrant]);
 
-  // 5. Main Canvas Render (with Filters)
   useEffect(() => {
     if (!image || pieces.length === 0) return;
     const canvas = canvasRef.current;
@@ -174,7 +165,7 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
 
     if (showGhost) {
       ctx.globalAlpha = 0.2;
-      ctx.filter = FILTERS[filterIndex].value; // Apply filter to ghost
+      ctx.filter = FILTERS[filterIndex].value;
       ctx.drawImage(image, 0, 0, boardSize.w, boardSize.h);
       ctx.filter = 'none';
       ctx.globalAlpha = 1.0;
@@ -202,7 +193,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
       
       const maxTab = Math.min(piece.width, piece.height) * 0.5;
       
-      // Apply active filter to the actual puzzle pieces
       ctx.filter = FILTERS[filterIndex].value;
       
       ctx.drawImage(
@@ -214,7 +204,7 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
         -maxTab, -maxTab, piece.width + maxTab * 2, piece.height + maxTab * 2
       );
       
-      ctx.filter = 'none'; // Reset for next piece
+      ctx.filter = 'none';
 
       if (!piece.isPlaced) {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
@@ -225,7 +215,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
     ctx.restore();
   }, [pieces, image, activePieceId, showGhost, camera, boardSize, filterIndex]);
 
-  // Pointer Handlers
   const handlePointerDownBoard = (e) => {
     const worldX = (e.clientX - camera.x) / camera.scale;
     const worldY = (e.clientY - camera.y) / camera.scale;
@@ -300,10 +289,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
     setActivePieceId(null);
   };
 
-  const cycleFilter = () => {
-    setFilterIndex(prev => (prev + 1) % FILTERS.length);
-  };
-
   const trayPieces = pieces.filter(p => 
     p.inTray && 
     (activeQuadrant === 0 || p.quadrant === activeQuadrant) &&
@@ -313,7 +298,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
   return (
     <div className="flex flex-col w-full h-full relative overflow-hidden transition-colors duration-500" style={{ backgroundColor: bgColor }} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp}>
       
-      {/* TOOLBAR */}
       <div className="flex items-center justify-between p-4 bg-black/40 backdrop-blur-sm z-20 w-full absolute top-0 h-[70px] pointer-events-none">
         <button onClick={onExit} className="pointer-events-auto p-2 rounded-full bg-black/50 text-white hover:bg-black/70">
           <ArrowLeft size={24} />
@@ -326,15 +310,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
         )}
         
         <div className="pointer-events-auto flex gap-2 bg-white/10 p-1 rounded-full relative">
-          
-          {/* NEW FILTER BUTTON */}
-          <button onClick={cycleFilter} className="p-2 rounded-full text-emerald-300 hover:bg-white/20 relative group">
-            <Palette size={20} />
-            <span className="absolute -bottom-8 right-0 bg-black/80 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap">
-              {FILTERS[filterIndex].name}
-            </span>
-          </button>
-
           <button onClick={() => setFilterEdges(!filterEdges)} className={`p-2 rounded-full ${filterEdges ? 'bg-emerald-500 text-white' : 'text-neutral-300 hover:bg-white/20'}`}>
             <Grid size={20} />
           </button>
@@ -355,12 +330,10 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
         </div>
       </div>
 
-      {/* CANVAS */}
       <div className="flex-1 w-full h-full relative">
         <canvas ref={canvasRef} className="touch-none absolute top-0 left-0 transition-transform duration-1000 ease-in-out" onPointerDown={handlePointerDownBoard} />
       </div>
 
-      {/* TRAY */}
       <div className="h-[120px] bg-black/50 backdrop-blur-md border-t border-white/10 w-full flex items-center px-4 overflow-x-auto whitespace-nowrap gap-4 z-20 touch-pan-x absolute bottom-0 pointer-events-auto">
         {trayPieces.length === 0 && activeQuadrant > 0 ? (
           <p className="text-white/50 mx-auto text-sm font-bold tracking-wide">Sector Complete</p>
