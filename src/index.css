@@ -1,9 +1,9 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
+/* Prevent pull-to-refresh on mobile while dragging pieces */
 body {
   overscroll-behavior-y: none;
   touch-action: none;
   background-color: #171717; /* neutral-900 */
+  color: white;
 }
