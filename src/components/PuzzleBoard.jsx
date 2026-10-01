@@ -2,7 +2,18 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Settings, Eye, Grid, ArrowLeft } from 'lucide-react';
 import { generatePuzzleGrid, buildPiecePath } from '../utils/jigsawMath';
 import PieceThumbnail from './PieceThumbnail';
-import { FILTERS } from '../App';
+
+// Duplicate array here to completely prevent Vite import deadlocks
+const FILTERS = [
+  { name: 'Normal', value: 'none' },
+  { name: 'Vibrant', value: 'saturate(200%) contrast(110%)' },
+  { name: 'B&W', value: 'grayscale(100%) contrast(120%)' },
+  { name: 'Vintage', value: 'sepia(80%) contrast(110%)' },
+  { name: 'Warm', value: 'sepia(40%) saturate(150%) hue-rotate(-15deg)' },
+  { name: 'Cool', value: 'saturate(150%) hue-rotate(180deg)' },
+  { name: 'Contrast', value: 'contrast(150%) saturate(120%)' },
+  { name: 'Faded', value: 'contrast(80%) brightness(120%) saturate(70%)' }
+];
 
 export default function PuzzleBoard({ puzzleData, onExit }) {
   const canvasRef = useRef(null);
@@ -15,6 +26,9 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [activeQuadrant, setActiveQuadrant] = useState(0); 
   
+  // Dedicated Tracker: Only saves when a piece drops
+  const [saveTrigger, setSaveTrigger] = useState(0);
+
   const safeFilter = FILTERS[puzzleData.filterIndex] ? FILTERS[puzzleData.filterIndex].value : 'none';
   const [bgColor, setBgColor] = useState('#8B5A2B');
   const [showBgPicker, setShowBgPicker] = useState(false);
@@ -73,30 +87,35 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
     img.src = puzzleData.imageSrc;
   }, [puzzleData]);
 
+  // CRITICAL FIX: Only fires when saveTrigger is explicitly ticked. Ignores drag events.
   useEffect(() => {
-    if (pieces.length === 0) return;
+    if (pieces.length === 0 || saveTrigger === 0) return;
     
-    const isComplete = pieces.every(p => p.isPlaced);
-    let library = JSON.parse(localStorage.getItem('sovereign_jigsaw_library')) || [];
-    if (!Array.isArray(library)) library = [];
-    
-    const existingIndex = library.findIndex(p => p.id === puzzleData.id);
-    const saveState = {
-      ...puzzleData,
-      pieces,
-      activeQuadrant,
-      status: isComplete ? 'completed' : 'active',
-      lastPlayed: Date.now()
-    };
+    try {
+      const isComplete = pieces.every(p => p.isPlaced);
+      let library = JSON.parse(localStorage.getItem('sovereign_jigsaw_library')) || [];
+      if (!Array.isArray(library)) library = [];
+      
+      const existingIndex = library.findIndex(p => p.id === puzzleData.id);
+      const saveState = {
+        ...puzzleData,
+        pieces,
+        activeQuadrant,
+        status: isComplete ? 'completed' : 'active',
+        lastPlayed: Date.now()
+      };
 
-    if (existingIndex >= 0) {
-      library[existingIndex] = saveState;
-    } else {
-      library.push(saveState);
+      if (existingIndex >= 0) {
+        library[existingIndex] = saveState;
+      } else {
+        library.push(saveState);
+      }
+      
+      localStorage.setItem('sovereign_jigsaw_library', JSON.stringify(library));
+    } catch (e) {
+      console.error("Auto-Save Engine Overloaded", e);
     }
-    
-    localStorage.setItem('sovereign_jigsaw_library', JSON.stringify(library));
-  }, [pieces, activeQuadrant, puzzleData]);
+  }, [saveTrigger, activeQuadrant]); 
 
   useEffect(() => {
     if (!boardSize.w) return;
@@ -133,7 +152,10 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
     const isDone = quadPieces.length > 0 && quadPieces.every(p => p.isPlaced);
     
     if (isDone) {
-      const timer = setTimeout(() => { setActiveQuadrant(prev => prev === 4 ? 0 : prev + 1); }, 1500);
+      const timer = setTimeout(() => { 
+        setActiveQuadrant(prev => prev === 4 ? 0 : prev + 1); 
+        setSaveTrigger(prev => prev + 1); // Save when quadrant changes
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, [pieces, activeQuadrant]);
@@ -279,7 +301,9 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
       }
       return p;
     }));
+    
     setActivePieceId(null);
+    setSaveTrigger(prev => prev + 1); // FIRE SAVE EVENT ONLY ON DROP
   };
 
   const trayPieces = pieces.filter(p => 

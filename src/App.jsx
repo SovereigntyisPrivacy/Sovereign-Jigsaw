@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
-import { ImagePlus, Library, Play, Trash2, CheckCircle2 } from 'lucide-react'
+import { ImagePlus, Library, Play, Trash2, CheckCircle2, Palette } from 'lucide-react'
 import PuzzleBoard from './components/PuzzleBoard'
 
-export const FILTERS = [
+// Isolated Filter List to prevent circular dependency crashes
+const FILTERS = [
   { name: 'Normal', value: 'none' },
   { name: 'Vibrant', value: 'saturate(200%) contrast(110%)' },
   { name: 'B&W', value: 'grayscale(100%) contrast(120%)' },
@@ -28,10 +29,11 @@ function App() {
       const savedData = JSON.parse(localStorage.getItem('sovereign_jigsaw_library'));
       const saved = Array.isArray(savedData) ? savedData : [];
       
-      // CRASH FIX: Strip out corrupted or incompatible old save files
+      // CRASH FIX: Strip out corrupted saves and ensure everything is formatted correctly
       const validSaves = saved.filter(p => p && p.id && Array.isArray(p.pieces));
       setLibrary(validSaves.sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0)));
     } catch (e) {
+      // If the memory is completely bricked, purge it to recover the app
       setLibrary([]);
       localStorage.removeItem('sovereign_jigsaw_library');
     }
@@ -118,9 +120,13 @@ function App() {
           ) : (
             <div className="flex flex-col gap-4 overflow-y-auto pb-10">
               {library.map(puzzle => {
+                if (!puzzle || !Array.isArray(puzzle.pieces)) return null;
+
                 const totalPieces = puzzle.cols * puzzle.rows;
                 const placedPieces = puzzle.pieces.filter(p => p.isPlaced).length;
-                const percent = Math.round((placedPieces / totalPieces) * 100);
+                const percent = Math.round((placedPieces / totalPieces) * 100) || 0;
+                
+                // Safe check fallback to prevent crashes if filter index is out of bounds
                 const safeFilter = FILTERS[puzzle.filterIndex] ? FILTERS[puzzle.filterIndex].value : 'none';
                 
                 return (
@@ -169,7 +175,6 @@ function App() {
              />
           </div>
 
-          {/* NEW VISUAL FILTER SCROLLER */}
           <div className="w-full flex gap-3 overflow-x-auto pb-2 mb-6 touch-pan-x">
             {FILTERS.map((f, i) => (
               <button 
