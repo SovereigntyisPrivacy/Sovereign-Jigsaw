@@ -32,8 +32,10 @@ jobs:
     - name: Build React Assets
       run: npm run build
 
-    - name: Sync Capacitor Android
-      run: npx @capacitor/cli sync android
+    - name: Add and Sync Capacitor Android
+      run: |
+        npx @capacitor/cli add android || true
+        npx @capacitor/cli sync android
 
     - name: Build Android APK with Gradle
       working-directory: ./android
