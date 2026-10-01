@@ -1,0 +1,6 @@
+{
+  "appId": "com.sovereigntyisprivacy.jigsaw",
+  "appName": "Sovereign Jigsaw",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
