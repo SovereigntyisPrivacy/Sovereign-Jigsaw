@@ -1,13 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
-import { ImagePlus, Library, Play, Trash2, CheckCircle2, Palette } from 'lucide-react'
+import { ImagePlus, Library, Play, Trash2, CheckCircle2 } from 'lucide-react'
 import PuzzleBoard from './components/PuzzleBoard'
 
-const FILTERS = [
+export const FILTERS = [
   { name: 'Normal', value: 'none' },
+  { name: 'Vibrant', value: 'saturate(200%) contrast(110%)' },
   { name: 'B&W', value: 'grayscale(100%) contrast(120%)' },
   { name: 'Vintage', value: 'sepia(80%) contrast(110%)' },
-  { name: 'Vibrant', value: 'saturate(200%) contrast(110%)' }
+  { name: 'Warm', value: 'sepia(40%) saturate(150%) hue-rotate(-15deg)' },
+  { name: 'Cool', value: 'saturate(150%) hue-rotate(180deg)' },
+  { name: 'Contrast', value: 'contrast(150%) saturate(120%)' },
+  { name: 'Faded', value: 'contrast(80%) brightness(120%) saturate(70%)' }
 ];
 
 function App() {
@@ -22,11 +26,14 @@ function App() {
   useEffect(() => {
     try {
       const savedData = JSON.parse(localStorage.getItem('sovereign_jigsaw_library'));
-      // CRASH FIX: Ensure the loaded data is actually an array before sorting
       const saved = Array.isArray(savedData) ? savedData : [];
-      setLibrary(saved.sort((a, b) => b.lastPlayed - a.lastPlayed));
+      
+      // CRASH FIX: Strip out corrupted or incompatible old save files
+      const validSaves = saved.filter(p => p && p.id && Array.isArray(p.pieces));
+      setLibrary(validSaves.sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0)));
     } catch (e) {
       setLibrary([]);
+      localStorage.removeItem('sovereign_jigsaw_library');
     }
   }, [currentView])
 
@@ -44,7 +51,7 @@ function App() {
       img.onload = () => {
         imgRef.current = img;
         setActivePuzzle({ id: Date.now(), imageSrc: image.webPath });
-        setFilterIndex(0); // Reset filter for new puzzle
+        setFilterIndex(0); 
         setCurrentView('setup');
       };
       img.src = image.webPath;
@@ -58,7 +65,6 @@ function App() {
     const cols = Math.max(2, Math.round(Math.sqrt(pieceCount * aspect)))
     const rows = Math.max(2, Math.round(Math.sqrt(pieceCount / aspect)))
     
-    // Bake the chosen filter directly into the save file
     setActivePuzzle(prev => ({ ...prev, cols, rows, filterIndex }))
     setCurrentView('game')
   }
@@ -112,19 +118,17 @@ function App() {
           ) : (
             <div className="flex flex-col gap-4 overflow-y-auto pb-10">
               {library.map(puzzle => {
-                // CRASH FIX: Ignore corrupted saves missing piece data
-                if (!puzzle || !puzzle.pieces) return null;
-
                 const totalPieces = puzzle.cols * puzzle.rows;
                 const placedPieces = puzzle.pieces.filter(p => p.isPlaced).length;
                 const percent = Math.round((placedPieces / totalPieces) * 100);
+                const safeFilter = FILTERS[puzzle.filterIndex] ? FILTERS[puzzle.filterIndex].value : 'none';
                 
                 return (
                   <div key={puzzle.id} className="bg-neutral-800 border border-neutral-700 rounded-2xl p-4 flex gap-4 items-center shadow-lg">
                     <img 
                       src={puzzle.imageSrc} 
                       className="w-24 h-24 rounded-xl object-cover bg-black" 
-                      style={{ filter: FILTERS[puzzle.filterIndex || 0].value }}
+                      style={{ filter: safeFilter }}
                     />
                     
                     <div className="flex-1">
@@ -155,23 +159,30 @@ function App() {
       )}
 
       {currentView === 'setup' && (
-        <div className="flex flex-col items-center justify-center w-full max-w-md h-full mt-20 bg-neutral-800 p-8 rounded-3xl shadow-2xl border border-neutral-700">
+        <div className="flex flex-col items-center justify-center w-full max-w-md h-full mt-20 bg-neutral-800 p-6 rounded-3xl shadow-2xl border border-neutral-700">
           
-          <div className="w-full h-56 mb-8 rounded-2xl overflow-hidden border-2 border-neutral-700 shadow-inner bg-black flex items-center justify-center relative">
+          <div className="w-full h-48 mb-4 rounded-2xl overflow-hidden border-2 border-neutral-700 shadow-inner bg-black flex items-center justify-center">
              <img 
                src={activePuzzle?.imageSrc} 
                className="max-w-full max-h-full object-contain transition-all duration-300" 
                style={{ filter: FILTERS[filterIndex].value }}
              />
-             <button 
-               onClick={() => setFilterIndex(prev => (prev + 1) % FILTERS.length)} 
-               className="absolute bottom-3 right-3 bg-black/70 p-2 rounded-xl border border-white/20 text-emerald-400 backdrop-blur flex items-center gap-2 hover:bg-black/90 active:scale-95 transition-all"
-             >
-               <Palette size={18} /> <span className="text-sm font-bold pr-1">{FILTERS[filterIndex].name}</span>
-             </button>
           </div>
 
-          <h2 className="text-2xl font-bold mb-6 text-white">Choose Difficulty</h2>
+          {/* NEW VISUAL FILTER SCROLLER */}
+          <div className="w-full flex gap-3 overflow-x-auto pb-2 mb-6 touch-pan-x">
+            {FILTERS.map((f, i) => (
+              <button 
+                key={f.name}
+                onClick={() => setFilterIndex(i)}
+                className={`shrink-0 px-4 py-2 rounded-full font-bold text-sm border-2 transition-all ${filterIndex === i ? 'bg-emerald-500 border-emerald-400 text-white shadow-lg' : 'bg-neutral-800 border-neutral-600 text-neutral-400 hover:text-white'}`}
+              >
+                {f.name}
+              </button>
+            ))}
+          </div>
+
+          <h2 className="text-2xl font-bold mb-4 text-white">Choose Difficulty</h2>
           <div className="w-full mb-10 mt-2">
             <div className="flex justify-between items-end text-neutral-400 mb-4 font-medium">
               <span className="text-sm">50</span>

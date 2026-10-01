@@ -2,13 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Settings, Eye, Grid, ArrowLeft } from 'lucide-react';
 import { generatePuzzleGrid, buildPiecePath } from '../utils/jigsawMath';
 import PieceThumbnail from './PieceThumbnail';
-
-const FILTERS = [
-  { name: 'Normal', value: 'none' },
-  { name: 'B&W', value: 'grayscale(100%) contrast(120%)' },
-  { name: 'Vintage', value: 'sepia(80%) contrast(110%)' },
-  { name: 'Vibrant', value: 'saturate(200%) contrast(110%)' }
-];
+import { FILTERS } from '../App';
 
 export default function PuzzleBoard({ puzzleData, onExit }) {
   const canvasRef = useRef(null);
@@ -21,8 +15,7 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [activeQuadrant, setActiveQuadrant] = useState(0); 
   
-  // UI States
-  const filterIndex = puzzleData.filterIndex || 0;
+  const safeFilter = FILTERS[puzzleData.filterIndex] ? FILTERS[puzzleData.filterIndex].value : 'none';
   const [bgColor, setBgColor] = useState('#8B5A2B');
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [filterEdges, setFilterEdges] = useState(false);
@@ -165,7 +158,7 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
 
     if (showGhost) {
       ctx.globalAlpha = 0.2;
-      ctx.filter = FILTERS[filterIndex].value;
+      ctx.filter = safeFilter;
       ctx.drawImage(image, 0, 0, boardSize.w, boardSize.h);
       ctx.filter = 'none';
       ctx.globalAlpha = 1.0;
@@ -193,7 +186,7 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
       
       const maxTab = Math.min(piece.width, piece.height) * 0.5;
       
-      ctx.filter = FILTERS[filterIndex].value;
+      ctx.filter = safeFilter;
       
       ctx.drawImage(
         image,
@@ -213,7 +206,7 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
       ctx.restore();
     });
     ctx.restore();
-  }, [pieces, image, activePieceId, showGhost, camera, boardSize, filterIndex]);
+  }, [pieces, image, activePieceId, showGhost, camera, boardSize, safeFilter]);
 
   const handlePointerDownBoard = (e) => {
     const worldX = (e.clientX - camera.x) / camera.scale;
@@ -342,7 +335,7 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
         ) : (
           trayPieces.map(p => (
             <div key={p.id} onPointerDown={(e) => handlePointerDownTray(e, p)} className="h-20 w-20 bg-white/5 rounded-xl border border-white/10 flex items-center justify-center cursor-pointer shadow-lg shrink-0" style={{ touchAction: 'pan-x' }}>
-              <PieceThumbnail piece={p} image={image} boardWidth={boardSize.w} boardHeight={boardSize.h} imageFilter={FILTERS[filterIndex].value} />
+              <PieceThumbnail piece={p} image={image} boardWidth={boardSize.w} boardHeight={boardSize.h} imageFilter={safeFilter} />
             </div>
           ))
         )}
