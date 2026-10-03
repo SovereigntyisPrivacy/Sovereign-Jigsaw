@@ -1,76 +1,77 @@
-export function generatePuzzleGrid(width, height, cols, rows) {
+export function generatePuzzleGrid(boardW, boardH, cols, rows) {
   const pieces = [];
-  const pieceWidth = width / cols;
-  const pieceHeight = height / rows;
+  const pieceW = boardW / cols;
+  const pieceH = boardH / rows;
 
-  // 1 = Tab (out), -1 = Blank (in), 0 = Flat (border)
-  const hEdges = Array.from({ length: rows }, () => 
-    Array.from({ length: cols - 1 }, () => Math.random() > 0.5 ? 1 : -1)
-  );
-  const vEdges = Array.from({ length: rows - 1 }, () => 
-    Array.from({ length: cols }, () => Math.random() > 0.5 ? 1 : -1)
-  );
-
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      const topEdge = y === 0 ? 0 : -vEdges[y - 1][x];
-      const rightEdge = x === cols - 1 ? 0 : hEdges[y][x];
-      const bottomEdge = y === rows - 1 ? 0 : vEdges[y][x];
-      const leftEdge = x === 0 ? 0 : -hEdges[y][x - 1];
-
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
       pieces.push({
-        id: `piece_${x}_${y}`,
-        targetX: x * pieceWidth,
-        targetY: y * pieceHeight,
-        // Start them scattered randomly on the board
-        currentX: Math.random() * (width - pieceWidth),
-        currentY: Math.random() * (height - pieceHeight),
-        width: pieceWidth,
-        height: pieceHeight,
-        edges: { top: topEdge, right: rightEdge, bottom: bottomEdge, left: leftEdge },
-        isPlaced: false
+        id: `${c}-${r}`,
+        targetX: c * pieceW,
+        targetY: r * pieceH,
+        width: pieceW,
+        height: pieceH,
+        edges: {
+          top: r === 0 ? 0 : -pieces[(r - 1) * cols + c].edges.bottom,
+          right: c === cols - 1 ? 0 : (Math.random() > 0.5 ? 1 : -1),
+          bottom: r === rows - 1 ? 0 : (Math.random() > 0.5 ? 1 : -1),
+          left: c === 0 ? 0 : -pieces[r * cols + (c - 1)].edges.right
+        },
+        isPlaced: false,
+        currentX: 0,
+        currentY: 0
       });
     }
   }
-  return { pieces, pieceWidth, pieceHeight };
+  return { pieces };
 }
 
-export function buildPiecePath(ctx, width, height, edges) {
-  const tabSize = Math.min(width, height) * 0.25;
-  
+export function buildPiecePath(ctx, w, h, edges, cutStyle = 'classic') {
   ctx.beginPath();
   ctx.moveTo(0, 0);
 
-  // Top Edge
-  if (edges.top === 0) ctx.lineTo(width, 0);
-  else {
-    ctx.lineTo(width / 2 - tabSize, 0);
-    ctx.bezierCurveTo(width / 2 - tabSize, -tabSize * edges.top * 2, width / 2 + tabSize, -tabSize * edges.top * 2, width / 2 + tabSize, 0);
-    ctx.lineTo(width, 0);
-  }
+  const drawEdge = (length, tabDir) => {
+    if (tabDir === 0) {
+      ctx.lineTo(length, 0);
+      return;
+    }
 
-  // Right Edge
-  if (edges.right === 0) ctx.lineTo(width, height);
-  else {
-    ctx.lineTo(width, height / 2 - tabSize);
-    ctx.bezierCurveTo(width + tabSize * edges.right * 2, height / 2 - tabSize, width + tabSize * edges.right * 2, height / 2 + tabSize, width, height / 2 + tabSize);
-    ctx.lineTo(width, height);
-  }
+    const tab = tabDir * Math.min(w, h) * 0.25; 
+    const mid = length / 2;
 
-  // Bottom Edge
-  if (edges.bottom === 0) ctx.lineTo(0, height);
-  else {
-    ctx.lineTo(width / 2 + tabSize, height);
-    ctx.bezierCurveTo(width / 2 + tabSize, height + tabSize * edges.bottom * 2, width / 2 - tabSize, height + tabSize * edges.bottom * 2, width / 2 - tabSize, height);
-    ctx.lineTo(0, height);
-  }
+    if (cutStyle === 'jagged') {
+      ctx.lineTo(length * 0.35, 0);
+      ctx.lineTo(mid, -tab);
+      ctx.lineTo(length * 0.65, 0);
+      ctx.lineTo(length, 0);
+    } else if (cutStyle === 'circular') {
+      ctx.lineTo(length * 0.35, 0);
+      ctx.bezierCurveTo(length * 0.35, -tab*1.2, length * 0.65, -tab*1.2, length * 0.65, 0);
+      ctx.lineTo(length, 0);
+    } else {
+      // Classic Omega Cut
+      const neckWidth = Math.min(w, h) * 0.12;
+      const bulbWidth = Math.min(w, h) * 0.22;
+      ctx.lineTo(mid - neckWidth, 0);
+      ctx.bezierCurveTo(mid - neckWidth, -tab*0.2, mid - bulbWidth, -tab, mid, -tab);
+      ctx.bezierCurveTo(mid + bulbWidth, -tab, mid + neckWidth, -tab*0.2, mid + neckWidth, 0);
+      ctx.lineTo(length, 0);
+    }
+  };
 
-  // Left Edge
-  if (edges.left === 0) ctx.lineTo(0, 0);
-  else {
-    ctx.lineTo(0, height / 2 + tabSize);
-    ctx.bezierCurveTo(-tabSize * edges.left * 2, height / 2 + tabSize, -tabSize * edges.left * 2, height / 2 - tabSize, 0, height / 2 - tabSize);
-    ctx.lineTo(0, 0);
-  }
-  ctx.closePath();
+  drawEdge(w, edges.top);
+  ctx.translate(w, 0);
+  ctx.rotate(Math.PI / 2);
+  
+  drawEdge(h, edges.right);
+  ctx.translate(h, 0);
+  ctx.rotate(Math.PI / 2);
+  
+  drawEdge(w, edges.bottom);
+  ctx.translate(w, 0);
+  ctx.rotate(Math.PI / 2);
+  
+  drawEdge(h, edges.left);
+  ctx.translate(h, 0);
+  ctx.rotate(Math.PI / 2);
 }

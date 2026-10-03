@@ -2,18 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Settings, Eye, Grid, ArrowLeft } from 'lucide-react';
 import { generatePuzzleGrid, buildPiecePath } from '../utils/jigsawMath';
 import PieceThumbnail from './PieceThumbnail';
-
-// Duplicate array here to completely prevent Vite import deadlocks
-const FILTERS = [
-  { name: 'Normal', value: 'none' },
-  { name: 'Vibrant', value: 'saturate(200%) contrast(110%)' },
-  { name: 'B&W', value: 'grayscale(100%) contrast(120%)' },
-  { name: 'Vintage', value: 'sepia(80%) contrast(110%)' },
-  { name: 'Warm', value: 'sepia(40%) saturate(150%) hue-rotate(-15deg)' },
-  { name: 'Cool', value: 'saturate(150%) hue-rotate(180deg)' },
-  { name: 'Contrast', value: 'contrast(150%) saturate(120%)' },
-  { name: 'Faded', value: 'contrast(80%) brightness(120%) saturate(70%)' }
-];
+import { FILTERS } from '../App';
 
 export default function PuzzleBoard({ puzzleData, onExit }) {
   const canvasRef = useRef(null);
@@ -25,11 +14,11 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
   
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [activeQuadrant, setActiveQuadrant] = useState(0); 
-  
-  // Dedicated Tracker: Only saves when a piece drops
   const [saveTrigger, setSaveTrigger] = useState(0);
 
   const safeFilter = FILTERS[puzzleData.filterIndex] ? FILTERS[puzzleData.filterIndex].value : 'none';
+  const currentCutStyle = puzzleData.cutStyle || 'classic';
+  
   const [bgColor, setBgColor] = useState('#8B5A2B');
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [filterEdges, setFilterEdges] = useState(false);
@@ -87,10 +76,8 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
     img.src = puzzleData.imageSrc;
   }, [puzzleData]);
 
-  // CRITICAL FIX: Only fires when saveTrigger is explicitly ticked. Ignores drag events.
   useEffect(() => {
     if (pieces.length === 0 || saveTrigger === 0) return;
-    
     try {
       const isComplete = pieces.every(p => p.isPlaced);
       let library = JSON.parse(localStorage.getItem('sovereign_jigsaw_library')) || [];
@@ -110,11 +97,8 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
       } else {
         library.push(saveState);
       }
-      
       localStorage.setItem('sovereign_jigsaw_library', JSON.stringify(library));
-    } catch (e) {
-      console.error("Auto-Save Engine Overloaded", e);
-    }
+    } catch (e) {}
   }, [saveTrigger, activeQuadrant]); 
 
   useEffect(() => {
@@ -154,7 +138,7 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
     if (isDone) {
       const timer = setTimeout(() => { 
         setActiveQuadrant(prev => prev === 4 ? 0 : prev + 1); 
-        setSaveTrigger(prev => prev + 1); // Save when quadrant changes
+        setSaveTrigger(prev => prev + 1); 
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -199,7 +183,8 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
       ctx.save();
       ctx.translate(piece.currentX, piece.currentY);
       
-      buildPiecePath(ctx, piece.width, piece.height, piece.edges);
+      // Inject the Cut Style Option
+      buildPiecePath(ctx, piece.width, piece.height, piece.edges, currentCutStyle);
       
       ctx.lineWidth = 2 / camera.scale;
       ctx.strokeStyle = piece.isPlaced ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.8)';
@@ -207,7 +192,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
       ctx.clip();
       
       const maxTab = Math.min(piece.width, piece.height) * 0.5;
-      
       ctx.filter = safeFilter;
       
       ctx.drawImage(
@@ -220,7 +204,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
       );
       
       ctx.filter = 'none';
-
       if (!piece.isPlaced) {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
         ctx.fill();
@@ -228,7 +211,7 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
       ctx.restore();
     });
     ctx.restore();
-  }, [pieces, image, activePieceId, showGhost, camera, boardSize, safeFilter]);
+  }, [pieces, image, activePieceId, showGhost, camera, boardSize, safeFilter, currentCutStyle]);
 
   const handlePointerDownBoard = (e) => {
     const worldX = (e.clientX - camera.x) / camera.scale;
@@ -253,7 +236,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
   const handlePointerDownTray = (e, p) => {
     const worldX = (e.clientX - camera.x) / camera.scale;
     const worldY = (e.clientY - camera.y) / camera.scale;
-
     const spawnX = worldX - (p.width / 2);
     const spawnY = worldY - (p.height / 2);
     
@@ -303,7 +285,7 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
     }));
     
     setActivePieceId(null);
-    setSaveTrigger(prev => prev + 1); // FIRE SAVE EVENT ONLY ON DROP
+    setSaveTrigger(prev => prev + 1); 
   };
 
   const trayPieces = pieces.filter(p => 
@@ -359,7 +341,7 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
         ) : (
           trayPieces.map(p => (
             <div key={p.id} onPointerDown={(e) => handlePointerDownTray(e, p)} className="h-20 w-20 bg-white/5 rounded-xl border border-white/10 flex items-center justify-center cursor-pointer shadow-lg shrink-0" style={{ touchAction: 'pan-x' }}>
-              <PieceThumbnail piece={p} image={image} boardWidth={boardSize.w} boardHeight={boardSize.h} imageFilter={safeFilter} />
+              <PieceThumbnail piece={p} image={image} boardWidth={boardSize.w} boardHeight={boardSize.h} imageFilter={safeFilter} cutStyle={currentCutStyle} />
             </div>
           ))
         )}

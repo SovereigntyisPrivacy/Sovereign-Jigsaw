@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
-import { ImagePlus, Library, Play, Trash2, CheckCircle2, Palette, ArrowLeft } from 'lucide-react'
+import { ImagePlus, Library, Play, Trash2, CheckCircle2, ArrowLeft } from 'lucide-react'
 import PuzzleBoard from './components/PuzzleBoard'
 
-// Isolated Filter List to prevent circular dependency crashes
-const FILTERS = [
+export const FILTERS = [
   { name: 'Normal', value: 'none' },
   { name: 'Vibrant', value: 'saturate(200%) contrast(110%)' },
   { name: 'B&W', value: 'grayscale(100%) contrast(120%)' },
@@ -22,13 +21,13 @@ function App() {
   
   const [pieceCount, setPieceCount] = useState(100)
   const [filterIndex, setFilterIndex] = useState(0)
+  const [cutStyle, setCutStyle] = useState('classic') // New State for Shapes
   const imgRef = useRef(null)
 
   useEffect(() => {
     try {
       const savedData = JSON.parse(localStorage.getItem('sovereign_jigsaw_library'));
       const saved = Array.isArray(savedData) ? savedData : [];
-      
       const validSaves = saved.filter(p => p && p.id && Array.isArray(p.pieces));
       setLibrary(validSaves.sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0)));
     } catch (e) {
@@ -52,6 +51,7 @@ function App() {
         imgRef.current = img;
         setActivePuzzle({ id: Date.now(), imageSrc: image.webPath });
         setFilterIndex(0); 
+        setCutStyle('classic');
         setCurrentView('setup');
       };
       img.src = image.webPath;
@@ -65,7 +65,8 @@ function App() {
     const cols = Math.max(2, Math.round(Math.sqrt(pieceCount * aspect)))
     const rows = Math.max(2, Math.round(Math.sqrt(pieceCount / aspect)))
     
-    setActivePuzzle(prev => ({ ...prev, cols, rows, filterIndex }))
+    // Save the cutStyle to the library data
+    setActivePuzzle(prev => ({ ...prev, cols, rows, filterIndex, cutStyle }))
     setCurrentView('game')
   }
 
@@ -162,9 +163,9 @@ function App() {
       )}
 
       {currentView === 'setup' && (
-        <div className="flex flex-col items-center justify-center w-full max-w-md h-full mt-20 bg-neutral-800 p-6 rounded-3xl shadow-2xl border border-neutral-700">
+        <div className="flex flex-col items-center w-full max-w-md my-6 overflow-y-auto bg-neutral-800 p-6 rounded-3xl shadow-2xl border border-neutral-700">
           
-          <div className="w-full h-48 mb-4 rounded-2xl overflow-hidden border-2 border-neutral-700 shadow-inner bg-black flex items-center justify-center">
+          <div className="w-full h-48 mb-4 shrink-0 rounded-2xl overflow-hidden border-2 border-neutral-700 shadow-inner bg-black flex items-center justify-center">
              <img 
                src={activePuzzle?.imageSrc} 
                className="max-w-full max-h-full object-contain transition-all duration-300" 
@@ -172,7 +173,7 @@ function App() {
              />
           </div>
 
-          <div className="w-full flex gap-3 overflow-x-auto pb-2 mb-6 touch-pan-x">
+          <div className="w-full flex gap-3 overflow-x-auto pb-2 mb-4 touch-pan-x shrink-0">
             {FILTERS.map((f, i) => (
               <button 
                 key={f.name}
@@ -184,8 +185,21 @@ function App() {
             ))}
           </div>
 
-          <h2 className="text-2xl font-bold mb-4 text-white">Choose Difficulty</h2>
-          <div className="w-full mb-10 mt-2">
+          <h3 className="text-lg font-bold mb-3 text-white self-start">Cut Style</h3>
+          <div className="w-full flex gap-3 mb-8 shrink-0">
+            {['Classic', 'Circular', 'Jagged'].map(style => (
+              <button 
+                key={style}
+                onClick={() => setCutStyle(style.toLowerCase())}
+                className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${cutStyle === style.toLowerCase() ? 'bg-emerald-500 border-emerald-400 text-white shadow-lg' : 'bg-neutral-800 border-neutral-600 text-neutral-400 hover:text-white'}`}
+              >
+                {style}
+              </button>
+            ))}
+          </div>
+
+          <h3 className="text-lg font-bold mb-3 text-white self-start">Difficulty</h3>
+          <div className="w-full mb-10 shrink-0">
             <div className="flex justify-between items-end text-neutral-400 mb-4 font-medium">
               <span className="text-sm">50</span>
               <span className="text-emerald-400 font-black text-3xl">{pieceCount} <span className="text-lg text-emerald-500/70">Pieces</span></span>
@@ -198,7 +212,7 @@ function App() {
               className="w-full h-4 bg-neutral-900 rounded-lg appearance-none cursor-pointer accent-emerald-500"
             />
           </div>
-          <div className="flex gap-4 w-full">
+          <div className="flex gap-4 w-full shrink-0">
             <button onClick={() => setCurrentView('home')} className="flex-1 py-4 rounded-xl bg-neutral-700 hover:bg-neutral-600 font-bold text-lg transition-colors">Cancel</button>
             <button onClick={startGame} className="flex-1 py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold text-lg shadow-lg transition-colors">Start Game</button>
           </div>

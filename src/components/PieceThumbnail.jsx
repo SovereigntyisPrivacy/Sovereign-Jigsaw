@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { buildPiecePath } from '../utils/jigsawMath';
 
-export default function PieceThumbnail({ piece, image, boardWidth, boardHeight, imageFilter = 'none' }) {
+export default function PieceThumbnail({ piece, image, boardWidth, boardHeight, imageFilter = 'none', cutStyle = 'classic' }) {
   const [dataUrl, setDataUrl] = useState('');
 
   useEffect(() => {
@@ -23,15 +23,13 @@ export default function PieceThumbnail({ piece, image, boardWidth, boardHeight, 
     ctx.scale(scale, scale);
     ctx.translate(maxTab, maxTab);
 
-    buildPiecePath(ctx, piece.width, piece.height, piece.edges);
+    buildPiecePath(ctx, piece.width, piece.height, piece.edges, cutStyle);
     
     ctx.lineWidth = 3 / scale;
     ctx.strokeStyle = 'rgba(255,255,255,0.9)';
     ctx.stroke();
     
     ctx.clip();
-    
-    // Apply the active color filter before drawing the image data
     ctx.filter = imageFilter;
     
     ctx.drawImage(
@@ -43,11 +41,9 @@ export default function PieceThumbnail({ piece, image, boardWidth, boardHeight, 
       -maxTab, -maxTab, piece.width + maxTab * 2, piece.height + maxTab * 2
     );
     
-    // Reset filter
     ctx.filter = 'none';
-
     setDataUrl(canvas.toDataURL('image/png'));
-  }, [piece, image, boardWidth, boardHeight, imageFilter]);
+  }, [piece, image, boardWidth, boardHeight, imageFilter, cutStyle]);
 
   if (!dataUrl) {
     return <div className="w-12 h-12 animate-pulse bg-white/10 rounded-lg" />;
