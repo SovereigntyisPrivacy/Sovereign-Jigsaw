@@ -37,6 +37,7 @@ export function buildPiecePath(ctx, w, h, edges, cutStyle = 'classic') {
     }
 
     const tab = tabDir * Math.min(w, h) * 0.25; 
+    const absTab = Math.abs(tab); // FIX: Prevents self-intersecting paths on inward tabs
     const mid = length / 2;
 
     if (cutStyle === 'jagged') {
@@ -67,16 +68,17 @@ export function buildPiecePath(ctx, w, h, edges, cutStyle = 'classic') {
       ctx.lineTo(mid + neckWidth, 0);
       ctx.lineTo(length, 0);
     } else if (cutStyle === 'diamond') {
-      ctx.lineTo(mid - tab, 0);
+      ctx.lineTo(mid - absTab, 0);
       ctx.lineTo(mid, -tab * 1.5);
-      ctx.lineTo(mid + tab, 0);
+      ctx.lineTo(mid + absTab, 0);
       ctx.lineTo(length, 0);
     } else if (cutStyle === 'stepped') {
-      const step = tab * 0.8;
-      ctx.lineTo(mid - step, 0);
-      ctx.lineTo(mid - step, -step);
-      ctx.lineTo(mid + step, -step);
-      ctx.lineTo(mid + step, 0);
+      const stepX = absTab * 0.8;
+      const stepY = tab * 0.8;
+      ctx.lineTo(mid - stepX, 0);
+      ctx.lineTo(mid - stepX, -stepY);
+      ctx.lineTo(mid + stepX, -stepY);
+      ctx.lineTo(mid + stepX, 0);
       ctx.lineTo(length, 0);
     } else if (cutStyle === 'spiky') {
       ctx.lineTo(length * 0.3, 0);
@@ -86,7 +88,6 @@ export function buildPiecePath(ctx, w, h, edges, cutStyle = 'classic') {
       ctx.lineTo(length * 0.7, 0);
       ctx.lineTo(length, 0);
     } else {
-      // Classic Omega Cut
       const neckWidth = Math.min(w, h) * 0.12;
       const bulbWidth = Math.min(w, h) * 0.22;
       ctx.lineTo(mid - neckWidth, 0);

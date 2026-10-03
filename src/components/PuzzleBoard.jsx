@@ -3,7 +3,6 @@ import { Settings, Eye, Grid, ArrowLeft } from 'lucide-react';
 import { generatePuzzleGrid, buildPiecePath } from '../utils/jigsawMath';
 import PieceThumbnail from './PieceThumbnail';
 
-// Duplicate array here to completely prevent Vite import deadlocks
 const FILTERS = [
   { name: 'Normal', value: 'none' },
   { name: 'Vibrant', value: 'saturate(200%) contrast(110%)' },
@@ -53,25 +52,36 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
       const puzzleH = img.height * scale;
       setBoardSize({ w: puzzleW, h: puzzleH });
 
+      const useQuadrants = (puzzleData.cols * puzzleData.rows) >= 80; 
+      const midCol = Math.ceil(puzzleData.cols / 2);
+      const midRow = Math.ceil(puzzleData.rows / 2);
+
       if (puzzleData.pieces) {
-        setPieces(puzzleData.pieces);
+        // FIX: Auto-heal any corrupted saves caused by previous floating point math
+        const healedPieces = puzzleData.pieces.map(p => {
+          let quad = 0;
+          if (useQuadrants) {
+            const [pCol, pRow] = p.id.split('-').map(Number);
+            if (pCol < midCol && pRow < midRow) quad = 1;
+            else if (pCol >= midCol && pRow < midRow) quad = 2;
+            else if (pCol < midCol && pRow >= midRow) quad = 3;
+            else quad = 4;
+          }
+          return { ...p, quadrant: quad };
+        });
+        
+        setPieces(healedPieces);
         setActiveQuadrant(puzzleData.activeQuadrant || 0);
         return;
       }
 
       const { pieces: newPieces } = generatePuzzleGrid(puzzleW, puzzleH, puzzleData.cols, puzzleData.rows);
-      const useQuadrants = (puzzleData.cols * puzzleData.rows) >= 80; 
-      
-      const midCol = Math.ceil(puzzleData.cols / 2);
-      const midRow = Math.ceil(puzzleData.rows / 2);
-      const pieceW = puzzleW / puzzleData.cols;
-      const pieceH = puzzleH / puzzleData.rows;
 
-      const mappedPieces = newPieces.map((p, index) => {
+      const mappedPieces = newPieces.map((p) => {
         let quad = 0;
         if (useQuadrants) {
-          const pCol = Math.floor((p.targetX + 1) / pieceW);
-          const pRow = Math.floor((p.targetY + 1) / pieceH);
+          // FIX: Exact geographical parsing instead of screen-coordinate float division
+          const [pCol, pRow] = p.id.split('-').map(Number);
           if (pCol < midCol && pRow < midRow) quad = 1;
           else if (pCol >= midCol && pRow < midRow) quad = 2;
           else if (pCol < midCol && pRow >= midRow) quad = 3;
