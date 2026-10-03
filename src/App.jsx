@@ -6,13 +6,19 @@ import PuzzleBoard from './components/PuzzleBoard'
 export const FILTERS = [
   { name: 'Normal', value: 'none' },
   { name: 'Vibrant', value: 'saturate(200%) contrast(110%)' },
+  { name: 'Golden', value: 'sepia(40%) saturate(250%) brightness(115%) hue-rotate(-5deg)' },
   { name: 'B&W', value: 'grayscale(100%) contrast(120%)' },
   { name: 'Vintage', value: 'sepia(80%) contrast(110%)' },
   { name: 'Warm', value: 'sepia(40%) saturate(150%) hue-rotate(-15deg)' },
   { name: 'Cool', value: 'saturate(150%) hue-rotate(180deg)' },
+  { name: 'Midnight', value: 'grayscale(60%) brightness(70%) contrast(150%) sepia(30%) hue-rotate(180deg)' },
+  { name: 'Cyberpunk', value: 'saturate(250%) hue-rotate(270deg) contrast(110%)' },
   { name: 'Contrast', value: 'contrast(150%) saturate(120%)' },
-  { name: 'Faded', value: 'contrast(80%) brightness(120%) saturate(70%)' }
+  { name: 'Faded', value: 'contrast(80%) brightness(120%) saturate(70%)' },
+  { name: 'Inverted', value: 'invert(100%)' }
 ];
+
+const CUT_STYLES = ['Classic', 'Circular', 'Jagged', 'Blocky', 'Wavy', 'Knob', 'Diamond', 'Stepped', 'Spiky'];
 
 function App() {
   const [currentView, setCurrentView] = useState('home') 
@@ -21,7 +27,7 @@ function App() {
   
   const [pieceCount, setPieceCount] = useState(100)
   const [filterIndex, setFilterIndex] = useState(0)
-  const [cutStyle, setCutStyle] = useState('classic') // New State for Shapes
+  const [cutStyle, setCutStyle] = useState('classic')
   const imgRef = useRef(null)
 
   useEffect(() => {
@@ -65,7 +71,6 @@ function App() {
     const cols = Math.max(2, Math.round(Math.sqrt(pieceCount * aspect)))
     const rows = Math.max(2, Math.round(Math.sqrt(pieceCount / aspect)))
     
-    // Save the cutStyle to the library data
     setActivePuzzle(prev => ({ ...prev, cols, rows, filterIndex, cutStyle }))
     setCurrentView('game')
   }
@@ -186,12 +191,12 @@ function App() {
           </div>
 
           <h3 className="text-lg font-bold mb-3 text-white self-start">Cut Style</h3>
-          <div className="w-full flex gap-3 mb-8 shrink-0">
-            {['Classic', 'Circular', 'Jagged'].map(style => (
+          <div className="w-full flex gap-3 overflow-x-auto pb-2 mb-8 touch-pan-x shrink-0">
+            {CUT_STYLES.map(style => (
               <button 
                 key={style}
                 onClick={() => setCutStyle(style.toLowerCase())}
-                className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${cutStyle === style.toLowerCase() ? 'bg-emerald-500 border-emerald-400 text-white shadow-lg' : 'bg-neutral-800 border-neutral-600 text-neutral-400 hover:text-white'}`}
+                className={`shrink-0 px-5 py-3 rounded-xl font-bold text-sm border-2 transition-all ${cutStyle === style.toLowerCase() ? 'bg-emerald-500 border-emerald-400 text-white shadow-lg' : 'bg-neutral-800 border-neutral-600 text-neutral-400 hover:text-white'}`}
               >
                 {style}
               </button>

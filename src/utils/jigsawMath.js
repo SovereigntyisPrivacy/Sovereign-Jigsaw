@@ -48,6 +48,43 @@ export function buildPiecePath(ctx, w, h, edges, cutStyle = 'classic') {
       ctx.lineTo(length * 0.35, 0);
       ctx.bezierCurveTo(length * 0.35, -tab*1.2, length * 0.65, -tab*1.2, length * 0.65, 0);
       ctx.lineTo(length, 0);
+    } else if (cutStyle === 'blocky') {
+      ctx.lineTo(length * 0.35, 0);
+      ctx.lineTo(length * 0.35, -tab);
+      ctx.lineTo(length * 0.65, -tab);
+      ctx.lineTo(length * 0.65, 0);
+      ctx.lineTo(length, 0);
+    } else if (cutStyle === 'wavy') {
+      ctx.bezierCurveTo(length * 0.25, 0, length * 0.25, -tab, mid, -tab);
+      ctx.bezierCurveTo(length * 0.75, -tab, length * 0.75, 0, length, 0);
+    } else if (cutStyle === 'knob') {
+      const neckWidth = Math.min(w, h) * 0.08;
+      const bulbWidth = Math.min(w, h) * 0.25;
+      ctx.lineTo(mid - neckWidth, 0);
+      ctx.lineTo(mid - neckWidth, -tab * 0.5);
+      ctx.bezierCurveTo(mid - bulbWidth, -tab * 0.5, mid - bulbWidth, -tab * 1.2, mid, -tab * 1.2);
+      ctx.bezierCurveTo(mid + bulbWidth, -tab * 1.2, mid + bulbWidth, -tab * 0.5, mid + neckWidth, -tab * 0.5);
+      ctx.lineTo(mid + neckWidth, 0);
+      ctx.lineTo(length, 0);
+    } else if (cutStyle === 'diamond') {
+      ctx.lineTo(mid - tab, 0);
+      ctx.lineTo(mid, -tab * 1.5);
+      ctx.lineTo(mid + tab, 0);
+      ctx.lineTo(length, 0);
+    } else if (cutStyle === 'stepped') {
+      const step = tab * 0.8;
+      ctx.lineTo(mid - step, 0);
+      ctx.lineTo(mid - step, -step);
+      ctx.lineTo(mid + step, -step);
+      ctx.lineTo(mid + step, 0);
+      ctx.lineTo(length, 0);
+    } else if (cutStyle === 'spiky') {
+      ctx.lineTo(length * 0.3, 0);
+      ctx.lineTo(length * 0.4, -tab * 1.2);
+      ctx.lineTo(mid, -tab * 0.4);
+      ctx.lineTo(length * 0.6, -tab * 1.2);
+      ctx.lineTo(length * 0.7, 0);
+      ctx.lineTo(length, 0);
     } else {
       // Classic Omega Cut
       const neckWidth = Math.min(w, h) * 0.12;

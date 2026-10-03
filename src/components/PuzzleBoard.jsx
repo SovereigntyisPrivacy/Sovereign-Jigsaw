@@ -2,7 +2,22 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Settings, Eye, Grid, ArrowLeft } from 'lucide-react';
 import { generatePuzzleGrid, buildPiecePath } from '../utils/jigsawMath';
 import PieceThumbnail from './PieceThumbnail';
-import { FILTERS } from '../App';
+
+// Duplicate array here to completely prevent Vite import deadlocks
+const FILTERS = [
+  { name: 'Normal', value: 'none' },
+  { name: 'Vibrant', value: 'saturate(200%) contrast(110%)' },
+  { name: 'Golden', value: 'sepia(40%) saturate(250%) brightness(115%) hue-rotate(-5deg)' },
+  { name: 'B&W', value: 'grayscale(100%) contrast(120%)' },
+  { name: 'Vintage', value: 'sepia(80%) contrast(110%)' },
+  { name: 'Warm', value: 'sepia(40%) saturate(150%) hue-rotate(-15deg)' },
+  { name: 'Cool', value: 'saturate(150%) hue-rotate(180deg)' },
+  { name: 'Midnight', value: 'grayscale(60%) brightness(70%) contrast(150%) sepia(30%) hue-rotate(180deg)' },
+  { name: 'Cyberpunk', value: 'saturate(250%) hue-rotate(270deg) contrast(110%)' },
+  { name: 'Contrast', value: 'contrast(150%) saturate(120%)' },
+  { name: 'Faded', value: 'contrast(80%) brightness(120%) saturate(70%)' },
+  { name: 'Inverted', value: 'invert(100%)' }
+];
 
 export default function PuzzleBoard({ puzzleData, onExit }) {
   const canvasRef = useRef(null);
@@ -183,7 +198,6 @@ export default function PuzzleBoard({ puzzleData, onExit }) {
       ctx.save();
       ctx.translate(piece.currentX, piece.currentY);
       
-      // Inject the Cut Style Option
       buildPiecePath(ctx, piece.width, piece.height, piece.edges, currentCutStyle);
       
       ctx.lineWidth = 2 / camera.scale;
